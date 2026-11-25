@@ -8,6 +8,18 @@ export interface Rect {
   h: number;
 }
 
+export function circleIntersectsRect(pos: Vec2, radius: number, r: Rect): boolean {
+  const dx = pos.x - clamp(pos.x, r.x, r.x + r.w);
+  const dy = pos.y - clamp(pos.y, r.y, r.y + r.h);
+  return dx * dx + dy * dy < radius * radius;
+}
+
+export function circlesOverlap(a: Vec2, ra: number, b: Vec2, rb: number): boolean {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return dx * dx + dy * dy < (ra + rb) * (ra + rb);
+}
+
 /** Pushes a circle out of a rectangle along the contact normal. Returns the new center. */
 export function resolveCircleRect(pos: Vec2, radius: number, r: Rect): Vec2 {
   const cx = clamp(pos.x, r.x, r.x + r.w);

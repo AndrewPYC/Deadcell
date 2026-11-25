@@ -77,7 +77,67 @@ export const COLOR_STAMINA_LOCKED = '#e0703a';
 export const COLOR_STAMINA_THRESHOLD = '#f2f3f5';
 export const HUD_SMALL_FONT = '12px Consolas, ui-monospace, monospace';
 
-// TODO Spec §?: weapons
+// Spec §6.1, §6.2, §6.6 Weapons (values from task brief; verify against SPEC.pdf)
+// Fields marked PLACEHOLDER were not in the brief and need values from the spec.
+export type WeaponId = 'assaultRifle';
+export interface WeaponStats {
+  name: string;
+  damage: number; // per projectile
+  fireRate: number; // shots per second while the trigger is held
+  magazineSize: number;
+  startingReserve: number;
+  reloadSeconds: number;
+  projectilesPerShot: number; // >1 for pellet weapons like the shotgun
+  pelletSpreadRadians: number; // fan width across all pellets of one shot
+  movingSpreadRadians: number; // max random deviation either side while moving
+  projectileSpeed: number; // px/s
+  projectileLifetime: number; // seconds
+  projectileRadius: number; // px
+  projectileColor: string;
+}
+export const WEAPONS: Record<WeaponId, WeaponStats> = {
+  assaultRifle: {
+    name: 'Assault Rifle',
+    damage: 12,
+    fireRate: 6,
+    magazineSize: 25,
+    startingReserve: 75,
+    reloadSeconds: 2,
+    projectilesPerShot: 1,
+    pelletSpreadRadians: 0,
+    movingSpreadRadians: 0.07, // PLACEHOLDER (~4°)
+    projectileSpeed: 900, // PLACEHOLDER
+    projectileLifetime: 1.2, // PLACEHOLDER
+    projectileRadius: 3, // PLACEHOLDER (visual size)
+    projectileColor: '#ffd166',
+  },
+};
+export const STARTING_WEAPON: WeaponId = 'assaultRifle';
+/** Projectiles spawn at the tip of the aim arrow. */
+export const MUZZLE_OFFSET = PLAYER_RADIUS + ARROW_TIP_LENGTH;
+/** Tolerance for timer comparisons, so 10 steps of 1/60 s count as exactly 1/6 s. */
+export const TIMER_EPSILON = 1e-9;
+
+// TODO remove in the next step: static test targets (not from spec)
+export const TARGET_HEALTH = 40;
+export const TARGET_RADIUS = 20;
+export const TARGET_FLASH_SECONDS = 0.1;
+export const TARGET_POSITIONS: readonly { x: number; y: number }[] = [
+  { x: 640, y: 200 },
+  { x: 1080, y: 260 },
+  { x: 420, y: 390 },
+];
+export const COLOR_TARGET = '#d94848';
+export const COLOR_TARGET_FLASH = '#ffffff';
+
+// HUD ammo readout (presentation)
+export const HUD_AMMO_FONT_SIZE = 22;
+export const HUD_AMMO_FONT = `bold ${HUD_AMMO_FONT_SIZE}px Consolas, ui-monospace, monospace`;
+export const RELOAD_BAR_WIDTH = 160;
+export const RELOAD_BAR_HEIGHT = 6;
+export const HUD_LINE_GAP = 6;
+export const COLOR_AMMO_EMPTY = '#e0703a';
+export const COLOR_RELOAD_FILL = '#ffd166';
 // TODO Spec §?: zombies
 // TODO Spec §?: abilities
 // TODO Spec §?: XP formula

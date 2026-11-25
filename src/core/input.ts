@@ -1,5 +1,8 @@
 import type { Vec2 } from './math';
 
+/** MouseEvent.button value for the primary (left) button; a DOM constant, not tuning. */
+const LEFT_MOUSE_BUTTON = 0;
+
 export interface Input {
   isDown: (code: string) => boolean;
   mouse: Readonly<Vec2>;
@@ -24,8 +27,12 @@ export function createInput(canvas: HTMLCanvasElement): Input {
     mouse.x = ((e.clientX - rect.left) / rect.width) * canvas.width;
     mouse.y = ((e.clientY - rect.top) / rect.height) * canvas.height;
   });
-  canvas.addEventListener('mousedown', () => (buttonDown = true));
-  window.addEventListener('mouseup', () => (buttonDown = false));
+  canvas.addEventListener('mousedown', (e) => {
+    if (e.button === LEFT_MOUSE_BUTTON) buttonDown = true;
+  });
+  window.addEventListener('mouseup', (e) => {
+    if (e.button === LEFT_MOUSE_BUTTON) buttonDown = false;
+  });
 
   return {
     isDown: (code) => keys.has(code),

@@ -8,7 +8,11 @@ import {
   MAP_WALLS,
   PLAYER_COLOR,
   PLAYER_RADIUS,
+  STARTING_WEAPON,
+  WEAPONS,
+  type WeaponId,
 } from '../data/config';
+import { createWeaponState, type WeaponState } from '../systems/weapon';
 import { moveDirection, moveVelocity, type MoveKeys } from '../systems/movement';
 import { canSprint, createStamina, updateStamina, type StaminaState } from '../systems/stamina';
 import { moveCircle } from '../systems/collision';
@@ -18,6 +22,9 @@ export interface Player {
   aim: number;
   stamina: StaminaState;
   sprinting: boolean;
+  moving: boolean;
+  weaponId: WeaponId;
+  weapon: WeaponState;
 }
 
 export const createPlayer = (pos: Vec2): Player => ({
@@ -25,6 +32,9 @@ export const createPlayer = (pos: Vec2): Player => ({
   aim: 0,
   stamina: createStamina(),
   sprinting: false,
+  moving: false,
+  weaponId: STARTING_WEAPON,
+  weapon: createWeaponState(WEAPONS[STARTING_WEAPON]),
 });
 
 const readMoveKeys = (input: Input): MoveKeys => ({
@@ -37,8 +47,8 @@ const readMoveKeys = (input: Input): MoveKeys => ({
 export function updatePlayer(p: Player, input: Input, dt: number): void {
   const keys = readMoveKeys(input);
   const dir = moveDirection(keys);
-  const moving = dir.x !== 0 || dir.y !== 0;
-  p.sprinting = moving && input.isDown('ShiftLeft') && canSprint(p.stamina);
+  p.moving = dir.x !== 0 || dir.y !== 0;
+  p.sprinting = p.moving && input.isDown('ShiftLeft') && canSprint(p.stamina);
   p.stamina = updateStamina(p.stamina, p.sprinting, dt);
 
   const v = moveVelocity(keys, p.sprinting);
