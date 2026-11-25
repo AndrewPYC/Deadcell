@@ -11,7 +11,7 @@ const H = 1000;
 describe('projectiles', () => {
   it('fly toward their angle at weapon speed', () => {
     const p = createProjectile(vec(100, 100), 0, rifle);
-    const [moved] = updateProjectiles([p], 0.1, [], W, H);
+    const [moved] = updateProjectiles([p], 0.1, [], W, H).alive;
     expect(moved.pos.x).toBeCloseTo(100 + rifle.projectileSpeed * 0.1);
     expect(moved.pos.y).toBeCloseTo(100);
   });
@@ -20,7 +20,7 @@ describe('projectiles', () => {
     const wall = { x: 200, y: 0, w: 50, h: 1000 };
     let list = [createProjectile(vec(100, 500), 0, rifle)];
     for (let i = 0; i < 60 && list.length; i++) {
-      list = updateProjectiles(list, 1 / 60, [wall], W, H);
+      list = updateProjectiles(list, 1 / 60, [wall], W, H).alive;
       for (const p of list) expect(p.pos.x).toBeLessThan(wall.x);
     }
     expect(list).toHaveLength(0);
@@ -28,13 +28,13 @@ describe('projectiles', () => {
 
   it('are removed when they leave the map', () => {
     const p = createProjectile(vec(W - 1, 500), 0, rifle);
-    expect(updateProjectiles([p], 0.1, [], W, H)).toHaveLength(0);
+    expect(updateProjectiles([p], 0.1, [], W, H).alive).toHaveLength(0);
   });
 
   it('are removed when their lifetime runs out', () => {
     const p = createProjectile(vec(500, 500), 0, { ...rifle, projectileSpeed: 0 });
-    expect(updateProjectiles([p], rifle.projectileLifetime / 2, [], W, H)).toHaveLength(1);
-    expect(updateProjectiles([p], rifle.projectileLifetime, [], W, H)).toHaveLength(0);
+    expect(updateProjectiles([p], rifle.projectileLifetime / 2, [], W, H).alive).toHaveLength(1);
+    expect(updateProjectiles([p], rifle.projectileLifetime, [], W, H).alive).toHaveLength(0);
   });
 });
 

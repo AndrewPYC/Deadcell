@@ -75,13 +75,19 @@ export const COLOR_STAMINA_TRACK = '#2a2c30';
 export const COLOR_STAMINA_FILL = '#4fc37a';
 export const COLOR_STAMINA_LOCKED = '#e0703a';
 export const COLOR_STAMINA_THRESHOLD = '#f2f3f5';
-export const HUD_SMALL_FONT = '12px Consolas, ui-monospace, monospace';
+export const HUD_SMALL_FONT_SIZE = 12;
+export const HUD_SMALL_FONT = `${HUD_SMALL_FONT_SIZE}px Consolas, ui-monospace, monospace`;
 
 // Spec §6.1, §6.2, §6.6 Weapons (values from task brief; verify against SPEC.pdf)
 // Fields marked PLACEHOLDER were not in the brief and need values from the spec.
-export type WeaponId = 'assaultRifle';
+export type WeaponId = 'assaultRifle' | 'shotgun' | 'rpg';
+export interface Splash {
+  radius: number; // px
+  centerDamage: number; // falls off linearly to 0 at the radius
+}
 export interface WeaponStats {
   name: string;
+  shortName: string; // HUD slot label
   damage: number; // per projectile
   fireRate: number; // shots per second while the trigger is held
   magazineSize: number;
@@ -94,10 +100,19 @@ export interface WeaponStats {
   projectileLifetime: number; // seconds
   projectileRadius: number; // px
   projectileColor: string;
+  reserveCap: number; // most rounds the reserve can hold
+  ammoBoxAmount: number; // rounds one ammo box adds to the reserve
+  splash: Splash | null; // explosive weapons detonate on impact, wall or max range
 }
+
+// RPG rocket range and speed: lifetime is derived so the rocket detonates at max range.
+const RPG_ROCKET_SPEED = 360; // PLACEHOLDER px/s ("slow-moving")
+const RPG_MAX_RANGE = 800; // PLACEHOLDER px
+
 export const WEAPONS: Record<WeaponId, WeaponStats> = {
   assaultRifle: {
     name: 'Assault Rifle',
+    shortName: 'RIFLE',
     damage: 12,
     fireRate: 6,
     magazineSize: 25,
@@ -110,9 +125,78 @@ export const WEAPONS: Record<WeaponId, WeaponStats> = {
     projectileLifetime: 1.2, // PLACEHOLDER
     projectileRadius: 3, // PLACEHOLDER (visual size)
     projectileColor: '#ffd166',
+    reserveCap: 75,
+    ammoBoxAmount: 25,
+    splash: null,
+  },
+  shotgun: {
+    name: 'Shotgun',
+    shortName: 'SHOTGUN',
+    damage: 8, // per pellet; several pellets on one zombie add up
+    fireRate: 1,
+    magazineSize: 5,
+    startingReserve: 20,
+    reloadSeconds: 2.5,
+    projectilesPerShot: 6,
+    pelletSpreadRadians: (30 * Math.PI) / 180, // 30° total cone
+    movingSpreadRadians: 0, // PLACEHOLDER: brief gives movement deviation only for the rifle
+    projectileSpeed: 800, // PLACEHOLDER
+    projectileLifetime: 0.45, // PLACEHOLDER (~360 px range)
+    projectileRadius: 2.5, // PLACEHOLDER (visual size)
+    projectileColor: '#ffe8a3',
+    // SPEC CONFLICT: the spec says the shotgun reserve cap is 3x its magazine (15), but it
+    // also gives a starting reserve of 20, which would start the player above the cap.
+    // We use a cap of 20 so the starting reserve is legal. Revisit if the spec is updated.
+    reserveCap: 20,
+    ammoBoxAmount: 10,
+    splash: null,
+  },
+  rpg: {
+    name: 'RPG',
+    shortName: 'RPG',
+    damage: 90, // direct hit
+    fireRate: 0.5,
+    magazineSize: 1,
+    startingReserve: 4,
+    reloadSeconds: 3,
+    projectilesPerShot: 1,
+    pelletSpreadRadians: 0,
+    movingSpreadRadians: 0, // PLACEHOLDER: brief gives movement deviation only for the rifle
+    projectileSpeed: RPG_ROCKET_SPEED,
+    projectileLifetime: RPG_MAX_RANGE / RPG_ROCKET_SPEED,
+    projectileRadius: 6, // PLACEHOLDER (visual size)
+    projectileColor: '#ff8c42',
+    reserveCap: 8,
+    ammoBoxAmount: 2,
+    splash: { radius: 100, centerDamage: 60 },
   },
 };
 export const STARTING_WEAPON: WeaponId = 'assaultRifle';
+/** Number-key slots: Digit1 → index 0, and so on. */
+export const WEAPON_SLOTS: readonly WeaponId[] = ['assaultRifle', 'shotgun', 'rpg'];
+export const WEAPON_SWITCH_SECONDS = 0.25;
+/**
+ * DEBUG: start with every weapon owned. Real unlock rules arrive with the level system;
+ * set to false then so the player starts with only STARTING_WEAPON.
+ */
+export const DEBUG_ALL_WEAPONS_OWNED = true;
+
+// Explosion visual (presentation)
+export const EXPLOSION_VISUAL_SECONDS = 0.3;
+export const EXPLOSION_START_RADIUS_FRACTION = 0.2;
+export const COLOR_EXPLOSION = '255, 140, 66'; // rgb triplet; alpha fades over the blast
+
+// TODO remove when zombies drop ammo: static test ammo boxes (positions not from spec)
+export const AMMO_BOX_SIZE = 18;
+export const AMMO_BOX_POSITIONS: readonly { x: number; y: number }[] = [
+  { x: 120, y: 620 },
+  { x: 760, y: 90 },
+  { x: 1180, y: 380 },
+  { x: 560, y: 640 },
+];
+export const COLOR_AMMO_BOX = '#c8b273';
+export const COLOR_AMMO_BOX_EDGE = '#3b3423';
+export const AMMO_BOX_EDGE_WIDTH = 2;
 /** Projectiles spawn at the tip of the aim arrow. */
 export const MUZZLE_OFFSET = PLAYER_RADIUS + ARROW_TIP_LENGTH;
 /** Tolerance for timer comparisons, so 10 steps of 1/60 s count as exactly 1/6 s. */
@@ -138,6 +222,9 @@ export const RELOAD_BAR_HEIGHT = 6;
 export const HUD_LINE_GAP = 6;
 export const COLOR_AMMO_EMPTY = '#e0703a';
 export const COLOR_RELOAD_FILL = '#ffd166';
+export const HUD_SLOT_GAP = 14;
+export const COLOR_SLOT_ACTIVE = '#ffd166';
+export const COLOR_SLOT_LOCKED = '#8a8d93';
 // TODO Spec §?: zombies
 // TODO Spec §?: abilities
 // TODO Spec §?: XP formula

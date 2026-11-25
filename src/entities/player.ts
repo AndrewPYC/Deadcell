@@ -8,11 +8,12 @@ import {
   MAP_WALLS,
   PLAYER_COLOR,
   PLAYER_RADIUS,
+  DEBUG_ALL_WEAPONS_OWNED,
   STARTING_WEAPON,
-  WEAPONS,
+  WEAPON_SLOTS,
   type WeaponId,
 } from '../data/config';
-import { createWeaponState, type WeaponState } from '../systems/weapon';
+import { createLoadout, type Loadout } from '../systems/loadout';
 import { moveDirection, moveVelocity, type MoveKeys } from '../systems/movement';
 import { canSprint, createStamina, updateStamina, type StaminaState } from '../systems/stamina';
 import { moveCircle } from '../systems/collision';
@@ -23,9 +24,10 @@ export interface Player {
   stamina: StaminaState;
   sprinting: boolean;
   moving: boolean;
-  weaponId: WeaponId;
-  weapon: WeaponState;
+  loadout: Loadout;
 }
+
+const startingWeapons = (): WeaponId[] => (DEBUG_ALL_WEAPONS_OWNED ? [...WEAPON_SLOTS] : [STARTING_WEAPON]);
 
 export const createPlayer = (pos: Vec2): Player => ({
   pos,
@@ -33,8 +35,7 @@ export const createPlayer = (pos: Vec2): Player => ({
   stamina: createStamina(),
   sprinting: false,
   moving: false,
-  weaponId: STARTING_WEAPON,
-  weapon: createWeaponState(WEAPONS[STARTING_WEAPON]),
+  loadout: createLoadout(startingWeapons(), STARTING_WEAPON),
 });
 
 const readMoveKeys = (input: Input): MoveKeys => ({

@@ -30,6 +30,21 @@ export function startReload(w: WeaponState, stats: WeaponStats): WeaponState {
   return canReload(w, stats) ? { ...w, reloadLeft: stats.reloadSeconds } : w;
 }
 
+export const cancelReload = (w: WeaponState): WeaponState => ({ ...w, reloadLeft: 0 });
+
+export const isReserveFull = (w: WeaponState, stats: WeaponStats): boolean => w.reserve >= stats.reserveCap;
+
+export interface PickupResult {
+  state: WeaponState;
+  picked: boolean;
+}
+
+/** An ammo box adds `ammoBoxAmount` to the reserve, capped. Refused when the reserve is already full. */
+export function tryPickupAmmo(w: WeaponState, stats: WeaponStats): PickupResult {
+  if (isReserveFull(w, stats)) return { state: w, picked: false };
+  return { state: { ...w, reserve: Math.min(stats.reserveCap, w.reserve + stats.ammoBoxAmount) }, picked: true };
+}
+
 /** Fraction of the reload done, 0..1 (0 when not reloading). */
 export const reloadProgress = (w: WeaponState, stats: WeaponStats): number =>
   isReloading(w) ? 1 - w.reloadLeft / stats.reloadSeconds : 0;
