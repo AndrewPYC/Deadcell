@@ -49,7 +49,8 @@ export const STAMINA_RESUME_THRESHOLD = 20;
 /** Resolution passes per step, so corners where two walls meet settle cleanly. */
 export const COLLISION_ITERATIONS = 3;
 
-// Test map walls (placeholder layout, not from spec)
+// Test map walls (placeholder layout, not from spec). One neutral color so zombies stand out.
+export const COLOR_WALL = '#3a3d42';
 export interface WallDef {
   x: number;
   y: number;
@@ -58,12 +59,12 @@ export interface WallDef {
   color: string;
 }
 export const MAP_WALLS: readonly WallDef[] = [
-  { x: 180, y: 120, w: 260, h: 40, color: '#b5523b' },
-  { x: 180, y: 160, w: 40, h: 180, color: '#b5523b' },
-  { x: 860, y: 140, w: 60, h: 260, color: '#c99a2e' },
-  { x: 520, y: 520, w: 300, h: 40, color: '#4f9a6a' },
-  { x: 1020, y: 480, w: 140, h: 140, color: '#7d5ba6' },
-  { x: 320, y: 470, w: 90, h: 90, color: '#3d8f9e' },
+  { x: 180, y: 120, w: 260, h: 40, color: COLOR_WALL },
+  { x: 180, y: 160, w: 40, h: 180, color: COLOR_WALL },
+  { x: 860, y: 140, w: 60, h: 260, color: COLOR_WALL },
+  { x: 520, y: 520, w: 300, h: 40, color: COLOR_WALL },
+  { x: 1020, y: 480, w: 140, h: 140, color: COLOR_WALL },
+  { x: 320, y: 470, w: 90, h: 90, color: COLOR_WALL },
 ];
 
 // HUD stamina bar (presentation)
@@ -202,17 +203,61 @@ export const MUZZLE_OFFSET = PLAYER_RADIUS + ARROW_TIP_LENGTH;
 /** Tolerance for timer comparisons, so 10 steps of 1/60 s count as exactly 1/6 s. */
 export const TIMER_EPSILON = 1e-9;
 
-// TODO remove in the next step: static test targets (not from spec)
-export const TARGET_HEALTH = 40;
-export const TARGET_RADIUS = 20;
-export const TARGET_FLASH_SECONDS = 0.1;
-export const TARGET_POSITIONS: readonly { x: number; y: number }[] = [
-  { x: 640, y: 200 },
-  { x: 1080, y: 260 },
-  { x: 420, y: 390 },
-];
-export const COLOR_TARGET = '#d94848';
-export const COLOR_TARGET_FLASH = '#ffffff';
+/** How long something flashes white after being hit. */
+export const HIT_FLASH_SECONDS = 0.1;
+export const COLOR_HIT_FLASH = '#ffffff';
+
+// Player health (PLACEHOLDER: no brief yet; take from spec)
+export const PLAYER_MAX_HEALTH = 100; // PLACEHOLDER
+export const RESTART_KEY = 'Enter';
+
+// Spec §7 Zombies (Walker values are PLACEHOLDERS: the basic-zombie brief was never given)
+export type ZombieType = 'walker';
+export interface ZombieStats {
+  name: string;
+  health: number;
+  speed: number; // px/s
+  damage: number; // per attack
+  xp: number; // awarded on kill
+  attackInterval: number; // seconds between attacks
+  radius: number; // px; each type has its own size
+  color: string; // each type has its own color
+}
+export const ZOMBIES: Record<ZombieType, ZombieStats> = {
+  walker: {
+    name: 'Walker',
+    health: 50, // PLACEHOLDER
+    speed: 70, // PLACEHOLDER
+    damage: 10, // PLACEHOLDER
+    xp: 10, // PLACEHOLDER
+    attackInterval: 1, // PLACEHOLDER
+    radius: 17,
+    color: '#7f9a5a',
+  },
+};
+/** Melee reach beyond touching: attack when edges are within this many px. */
+export const MELEE_REACH = 4;
+
+// Zombie spawning (debug/testing; real wave rules come later)
+export const ZOMBIE_SPAWN_MIN_DISTANCE = 300; // px from the player
+export const ZOMBIE_SPAWN_MAX_TRIES = 60;
+export const INITIAL_ZOMBIES: readonly ZombieType[] = ['walker', 'walker', 'walker']; // PLACEHOLDER
+/** DEBUG: press these keys to spawn one zombie of that type. */
+export const DEBUG_SPAWN_KEYS: Record<ZombieType, string> = {
+  walker: 'Digit6',
+};
+
+// Zombie health bars (presentation)
+export const ZOMBIE_HEALTH_BAR_HEIGHT = 4;
+export const ZOMBIE_HEALTH_BAR_GAP = 4;
+export const COLOR_ZOMBIE_HEALTH = '#e04848';
+
+// HUD player health and XP (presentation)
+export const COLOR_HEALTH_FILL = '#e04848';
+export const HUD_BAR_STACK_GAP = 26; // vertical gap between health and stamina bars
+export const COLOR_OVERLAY = 'rgba(10, 11, 13, 0.6)';
+export const HUD_TITLE_FONT = 'bold 44px Consolas, ui-monospace, monospace';
+export const HUD_TITLE_GAP = 40;
 
 // HUD ammo readout (presentation)
 export const HUD_AMMO_FONT_SIZE = 22;

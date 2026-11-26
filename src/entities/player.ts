@@ -8,7 +8,10 @@ import {
   MAP_WALLS,
   PLAYER_COLOR,
   PLAYER_RADIUS,
+  COLOR_HIT_FLASH,
   DEBUG_ALL_WEAPONS_OWNED,
+  HIT_FLASH_SECONDS,
+  PLAYER_MAX_HEALTH,
   STARTING_WEAPON,
   WEAPON_SLOTS,
   type WeaponId,
@@ -25,6 +28,19 @@ export interface Player {
   sprinting: boolean;
   moving: boolean;
   loadout: Loadout;
+  health: number;
+  maxHealth: number;
+  /** Total XP earned. Levels come with the level system. */
+  xp: number;
+  flashLeft: number;
+}
+
+export const isDead = (p: Player): boolean => p.health <= 0;
+
+export function damagePlayer(p: Player, amount: number): void {
+  if (amount <= 0 || isDead(p)) return;
+  p.health = Math.max(0, p.health - amount);
+  p.flashLeft = HIT_FLASH_SECONDS;
 }
 
 const startingWeapons = (): WeaponId[] => (DEBUG_ALL_WEAPONS_OWNED ? [...WEAPON_SLOTS] : [STARTING_WEAPON]);
@@ -36,6 +52,10 @@ export const createPlayer = (pos: Vec2): Player => ({
   sprinting: false,
   moving: false,
   loadout: createLoadout(startingWeapons(), STARTING_WEAPON),
+  health: PLAYER_MAX_HEALTH,
+  maxHealth: PLAYER_MAX_HEALTH,
+  xp: 0,
+  flashLeft: 0,
 });
 
 const readMoveKeys = (input: Input): MoveKeys => ({
@@ -55,6 +75,7 @@ export function updatePlayer(p: Player, input: Input, dt: number): void {
   const v = moveVelocity(keys, p.sprinting);
   p.pos = moveCircle(p.pos, vec(v.x * dt, v.y * dt), PLAYER_RADIUS, MAP_WALLS, CANVAS_WIDTH, CANVAS_HEIGHT);
   p.aim = angleTo(p.pos, input.mouse);
+  p.flashLeft = Math.max(0, p.flashLeft - dt);
 }
 
 /** Triangle whose base sits on the circle edge, centred on the aim angle: [baseA, tip, baseB]. */
@@ -66,7 +87,7 @@ export function arrowPoints(center: Vec2, radius: number, aim: number): [Vec2, V
 }
 
 export function drawPlayer(ctx: CanvasRenderingContext2D, p: Player): void {
-  ctx.fillStyle = PLAYER_COLOR;
+  ctx.fillStyle = p.flashLeft > 0 ? COLOR_HIT_FLASH : PLAYER_COLOR;
   ctx.beginPath();
   ctx.arc(p.pos.x, p.pos.y, PLAYER_RADIUS, 0, Math.PI * 2);
   ctx.fill();

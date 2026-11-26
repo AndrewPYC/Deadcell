@@ -5,6 +5,10 @@ const LEFT_MOUSE_BUTTON = 0;
 
 export interface Input {
   isDown: (code: string) => boolean;
+  /** True once per physical key press (ignores auto-repeat); clears the press. */
+  consumePress: (code: string) => boolean;
+  /** Drops presses nothing read this step, so a stale press can't fire later. */
+  clearPresses: () => void;
   mouse: Readonly<Vec2>;
   mouseDown: () => boolean;
 }
@@ -12,13 +16,18 @@ export interface Input {
 /** Tracks keyboard state (by KeyboardEvent.code) and mouse position in canvas pixels. */
 export function createInput(canvas: HTMLCanvasElement): Input {
   const keys = new Set<string>();
+  const presses = new Set<string>();
   const mouse: Vec2 = { x: canvas.width / 2, y: canvas.height / 2 };
   let buttonDown = false;
 
-  window.addEventListener('keydown', (e) => keys.add(e.code));
+  window.addEventListener('keydown', (e) => {
+    keys.add(e.code);
+    if (!e.repeat) presses.add(e.code);
+  });
   window.addEventListener('keyup', (e) => keys.delete(e.code));
   window.addEventListener('blur', () => {
     keys.clear();
+    presses.clear();
     buttonDown = false;
   });
 
@@ -36,6 +45,8 @@ export function createInput(canvas: HTMLCanvasElement): Input {
 
   return {
     isDown: (code) => keys.has(code),
+    consumePress: (code) => presses.delete(code),
+    clearPresses: () => presses.clear(),
     mouse,
     mouseDown: () => buttonDown,
   };
