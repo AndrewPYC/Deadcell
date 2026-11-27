@@ -12,7 +12,6 @@ import { createPlayer } from '../src/entities/player';
 import { vec } from '../src/core/math';
 import {
   FIXED_STEP_SECONDS,
-  MEDKIT_HEAL,
   PLAYER_MAX_HEALTH,
   TEST_LEVEL,
   WEAPONS,
@@ -25,16 +24,11 @@ const always = () => 0;
 const never = () => 0.999999;
 
 describe('medkit', () => {
-  it('restores 30 health', () => {
-    expect(MEDKIT_HEAL).toBe(30);
-    expect(tryUseMedkit(50, 100)).toEqual({ health: 80, used: true });
-  });
-
-  it('never heals above 100', () => {
+  it('restores full health from any amount of damage', () => {
     expect(PLAYER_MAX_HEALTH).toBe(100);
-    expect(tryUseMedkit(85, 100)).toEqual({ health: 100, used: true });
+    expect(tryUseMedkit(1, 100)).toEqual({ health: 100, used: true });
+    expect(tryUseMedkit(50, 100)).toEqual({ health: 100, used: true });
     expect(tryUseMedkit(99, 100)).toEqual({ health: 100, used: true });
-    expect(tryUseMedkit(70, 100)).toEqual({ health: 100, used: true });
   });
 
   it('cannot be used at full health', () => {
@@ -55,9 +49,9 @@ describe('collecting pickups', () => {
     expect(p.health).toBe(PLAYER_MAX_HEALTH);
   });
 
-  it('a hurt player picks up a medkit and is healed, clamped to 100', () => {
+  it('a hurt player picks up a medkit and is back to full health', () => {
     const p = createPlayer(vec(100, 100));
-    p.health = 90;
+    p.health = 20;
     expect(collectPickups(p, [at('medkit')])).toHaveLength(0);
     expect(p.health).toBe(100);
   });
@@ -83,7 +77,7 @@ describe('collecting pickups', () => {
     p.health = 50;
     p.loadout.weapons.assaultRifle.reserve = 0;
     expect(collectPickups(p, [at('ammo'), at('medkit')])).toHaveLength(0);
-    expect(p.health).toBe(80);
+    expect(p.health).toBe(PLAYER_MAX_HEALTH);
   });
 });
 

@@ -278,8 +278,7 @@ export const COLOR_HIT_FLASH = '#ffffff';
 
 // Spec §4.4 Health and medkits (values from task brief; verify against SPEC.pdf)
 export const PLAYER_MAX_HEALTH = 100;
-/** A medkit heals this much, never above max health, and is left on the ground at full health. */
-export const MEDKIT_HEAL = 30;
+// Medkits restore full health (changed from the brief's +30 by request) and stay on the ground at full health.
 export const RESTART_KEY = 'Enter';
 
 // Spec §7.1–7.7 Zombies (Runner/Tank/Spitter from task brief; verify against SPEC.pdf.

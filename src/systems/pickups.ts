@@ -1,4 +1,4 @@
-import { MEDKIT_HEAL, PLAYER_RADIUS, WEAPONS } from '../data/config';
+import { PLAYER_RADIUS, WEAPONS } from '../data/config';
 import { PICKUP_RADIUS, type Pickup } from '../entities/pickup';
 import type { Player } from '../entities/player';
 import { circlesOverlap } from './collision';
@@ -9,10 +9,10 @@ export interface HealResult {
   used: boolean;
 }
 
-/** Medkit: heals `amount`, never above max, and is refused (not used up) at full health. */
-export function tryUseMedkit(health: number, maxHealth: number, amount: number = MEDKIT_HEAL): HealResult {
+/** Medkit: restores full health, and is refused (not used up) at full health. */
+export function tryUseMedkit(health: number, maxHealth: number): HealResult {
   if (health <= 0 || health >= maxHealth) return { health, used: false };
-  return { health: Math.min(maxHealth, health + amount), used: true };
+  return { health: maxHealth, used: true };
 }
 
 /** Applies one pickup to the player. Returns false when it can't be used and stays on the ground. */
