@@ -1,22 +1,25 @@
 import {
   ABILITIES,
   ABILITY_KEY,
+  ACTIVE_ZOMBIE_CAP,
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
   COLOR_BACKGROUND,
   COLOR_FROST_PULSE,
   DEBUG_HORDE_KEY,
   DEBUG_HORDE_SIZE,
+  DEBUG_KILL_ALL_KEY,
   DEBUG_SPAWN_KEYS,
   DEBUG_SWITCH_CHARACTER_KEY,
   DEFAULT_CHARACTER,
   FROST_PULSE,
   HIT_FLASH_SECONDS,
-  INITIAL_ZOMBIES,
   MAP_WALLS,
   PLAYER_RADIUS,
+  TEST_LEVEL,
   ZOMBIES,
   type CharacterId,
+  type LevelDef,
   type ZombieType,
 } from './data/config';
 import type { Input } from './core/input';
@@ -32,16 +35,18 @@ import {
 } from './entities/player';
 import { drawProjectiles, updateProjectiles, type Detonation, type Projectile } from './entities/projectile';
 import { createExplosion, drawExplosions, updateExplosions, type Explosion } from './entities/explosion';
-import { createTestAmmoBoxes, drawAmmoBoxes, type AmmoBox } from './entities/ammoBox'; // TODO static spawns: remove when zombies drop ammo
+import { drawPickups, updatePickups, type Pickup } from './entities/pickup';
 import { createZombie, drawZombies, type Zombie } from './entities/zombie';
 import { updatePlayerWeapon } from './systems/playerWeapon';
 import { resolveHitsOnPlayer, resolveProjectileHits, type Damageable, type OnHit } from './systems/combat';
 import { applySplash } from './systems/splash';
-import { collectAmmoBoxes } from './systems/pickups';
+import { collectPickups } from './systems/pickups';
+import { createSupplyTimers, rollDrop, stockSupplyPoints, updateSupplyPoints } from './systems/supply';
 import { updateZombies, type ZombieWorld } from './systems/zombieAI';
 import { createNavCache, updateNavCache } from './systems/navCache';
-import { findSpawnPoint } from './systems/spawn';
+import { findSpawnPoint, GROUP_MIN_DISTANCE, groupPositions, inSafeArea } from './systems/spawn';
 import { collectKills } from './systems/xp';
+import { countsTowardCap, createWaveState, updateWaves, type WaveContext, type WaveState } from './systems/waves';
 import { isAbilityActive, updateAbility } from './systems/ability';
 import { abilityOf, applyHitEffect, frostPulse, weaponModsFor } from './systems/characterAbility';
 import { drawWalls } from './ui/walls';
@@ -49,8 +54,10 @@ import { drawStaminaBar } from './ui/staminaBar';
 import { drawHealthBar } from './ui/healthBar';
 import { drawAmmo } from './ui/ammo';
 import { drawAbilityIcon } from './ui/abilityIcon';
+import { drawWaveHud } from './ui/waveHud';
+import { drawSpawnWarnings } from './ui/spawnWarnings';
 import { drawDebugInfo } from './ui/debugInfo';
-import { drawGameOver } from './ui/gameOver';
+import { drawEndScreen } from './ui/gameOver';
 
 export interface World {
   player: Player;
@@ -58,34 +65,55 @@ export interface World {
   projectiles: Projectile[];
   enemyProjectiles: Projectile[];
   explosions: Explosion[];
-  ammoBoxes: AmmoBox[];
+  pickups: Pickup[];
+  /** Seconds until each empty supply location refills. */
+  supplyTimers: number[];
+  level: LevelDef;
+  waves: WaveState;
   zombieWorld: ZombieWorld;
+  /** Random source for spawns and drops; tests pass a seeded one. */
+  rng: () => number;
 }
 
 const ZOMBIE_TYPES = Object.keys(ZOMBIES) as ZombieType[];
 
+export const standardAlive = (zombies: readonly Zombie[]): number =>
+  zombies.filter((z) => countsTowardCap(z.type)).length;
+
+export const isLevelClear = (world: World): boolean => world.waves.phase === 'victory';
+/** Death or a cleared level stops the game until restart. */
+export const isOver = (world: World): boolean => isDead(world.player) || isLevelClear(world);
+
+/** DEBUG spawn: one zombie away from the player. Respects the cap like wave spawns do. */
 export function spawnZombie(world: World, type: ZombieType): void {
-  const pos = findSpawnPoint(world.player.pos, ZOMBIES[type].radius, MAP_WALLS, CANVAS_WIDTH, CANVAS_HEIGHT);
+  if (countsTowardCap(type) && standardAlive(world.zombies) >= ACTIVE_ZOMBIE_CAP) return;
+  const pos = findSpawnPoint(world.player.pos, ZOMBIES[type].radius, MAP_WALLS, CANVAS_WIDTH, CANVAS_HEIGHT, world.rng);
   world.zombies.push(createZombie(type, pos));
 }
 
-export function createWorld(character: CharacterId = DEFAULT_CHARACTER): World {
-  const world: World = {
+export function createWorld(
+  character: CharacterId = DEFAULT_CHARACTER,
+  level: LevelDef = TEST_LEVEL,
+  rng: () => number = Math.random,
+): World {
+  return {
     player: createPlayer(vec(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2), character),
     zombies: [],
     projectiles: [],
     enemyProjectiles: [],
     explosions: [],
-    ammoBoxes: createTestAmmoBoxes(),
+    pickups: stockSupplyPoints(level.supply, rng),
+    supplyTimers: createSupplyTimers(level.supply),
+    level,
+    waves: createWaveState(level),
     zombieWorld: {
       walls: MAP_WALLS,
       width: CANVAS_WIDTH,
       height: CANVAS_HEIGHT,
       nav: createNavCache(MAP_WALLS, CANVAS_WIDTH, CANVAS_HEIGHT, ZOMBIE_TYPES.map((t) => ZOMBIES[t].radius)),
     },
+    rng,
   };
-  INITIAL_ZOMBIES.forEach((t) => spawnZombie(world, t));
-  return world;
 }
 
 /** Splash hits zombies only; the player is never in this list, so blasts never hurt them. */
@@ -101,6 +129,7 @@ function handleDebugKeys(world: World, input: Input): void {
   if (input.consumePress(DEBUG_HORDE_KEY)) {
     for (let i = 0; i < DEBUG_HORDE_SIZE; i++) spawnZombie(world, ZOMBIE_TYPES[i % ZOMBIE_TYPES.length]);
   }
+  if (input.consumePress(DEBUG_KILL_ALL_KEY)) world.zombies.forEach((z) => (z.health = 0));
   if (input.consumePress(DEBUG_SWITCH_CHARACTER_KEY)) switchCharacter(world.player);
 }
 
@@ -116,9 +145,49 @@ function handleAbility(world: World, input: Input, dt: number): void {
   }
 }
 
+/** Removes the dead, awards XP and rolls the level's drop rule for each kill. */
+function handleKills(world: World): void {
+  const kills = collectKills(world.zombies);
+  world.zombies = kills.alive;
+  world.player.xp += kills.xp;
+  for (const z of kills.dead) {
+    const drop = rollDrop(z.type, z.pos, world.level.drops, world.pickups, world.rng);
+    if (drop) world.pickups.push(drop);
+  }
+}
+
+/** Runs the wave manager and turns finished warnings into groups of zombies. */
+function handleWaves(world: World, dt: number): void {
+  const player = world.player.pos;
+  const ctx: WaveContext = {
+    activeStandard: standardAlive(world.zombies),
+    activeTotal: world.zombies.length,
+    pickSpawnPoint: (type) =>
+      findSpawnPoint(player, ZOMBIES[type].radius, MAP_WALLS, CANVAS_WIDTH, CANVAS_HEIGHT, world.rng, GROUP_MIN_DISTANCE),
+    inSafeArea: (pos) => inSafeArea(pos, player),
+  };
+  const step = updateWaves(world.waves, world.level, dt, ctx);
+  world.waves = step.state;
+  for (const g of step.spawns) {
+    const r = ZOMBIES[g.type].radius;
+    for (const pos of groupPositions(g.pos, g.count, r, MAP_WALLS, CANVAS_WIDTH, CANVAS_HEIGHT)) {
+      world.zombies.push(createZombie(g.type, pos));
+    }
+  }
+}
+
+/** Expires old drops, refills empty supply locations and collects what the player touches. */
+function handleSupplies(world: World, dt: number): void {
+  world.pickups = updatePickups(world.pickups, dt);
+  const supply = updateSupplyPoints(world.supplyTimers, world.pickups, world.level.supply, dt, world.rng);
+  world.supplyTimers = supply.timers;
+  world.pickups.push(...supply.spawned);
+  world.pickups = collectPickups(world.player, world.pickups);
+}
+
 export function updateWorld(world: World, input: Input, dt: number): void {
   const { player } = world;
-  if (isDead(player)) return;
+  if (isOver(world)) return;
   handleDebugKeys(world, input);
 
   updatePlayer(player, input, dt);
@@ -134,9 +203,8 @@ export function updateWorld(world: World, input: Input, dt: number): void {
   hits.detonations.forEach((d) => detonate(world, d, onHit, d.directTarget));
   world.projectiles = hits.projectiles;
 
-  const kills = collectKills(world.zombies);
-  world.zombies = kills.alive;
-  player.xp += kills.xp;
+  handleKills(world);
+  handleWaves(world, dt);
 
   updateNavCache(world.zombieWorld.nav, player.pos, dt);
   const zombieStep = updateZombies(world.zombies, player.pos, PLAYER_RADIUS, world.zombieWorld, dt);
@@ -154,14 +222,15 @@ export function updateWorld(world: World, input: Input, dt: number): void {
   damagePlayer(player, spitHits.damage);
 
   world.explosions = updateExplosions(world.explosions, dt);
-  world.ammoBoxes = collectAmmoBoxes(player, world.ammoBoxes);
+  handleSupplies(world, dt);
 }
 
 export function renderWorld(ctx: CanvasRenderingContext2D, world: World): void {
   ctx.fillStyle = COLOR_BACKGROUND;
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   drawWalls(ctx, MAP_WALLS);
-  drawAmmoBoxes(ctx, world.ammoBoxes);
+  drawPickups(ctx, world.pickups);
+  drawSpawnWarnings(ctx, world.waves.warnings);
   drawZombies(ctx, world.zombies);
   drawProjectiles(ctx, world.projectiles);
   drawProjectiles(ctx, world.enemyProjectiles);
@@ -171,6 +240,8 @@ export function renderWorld(ctx: CanvasRenderingContext2D, world: World): void {
   drawStaminaBar(ctx, world.player.stamina);
   drawAmmo(ctx, world.player.loadout);
   drawAbilityIcon(ctx, world.player);
+  drawWaveHud(ctx, world.waves, world.level.waves.length, world.zombies.length);
   drawDebugInfo(ctx, world.zombies.length);
-  if (isDead(world.player)) drawGameOver(ctx, world.player.xp);
+  if (isDead(world.player)) drawEndScreen(ctx, 'YOU DIED', world.player.xp);
+  else if (isLevelClear(world)) drawEndScreen(ctx, 'LEVEL CLEAR', world.player.xp);
 }

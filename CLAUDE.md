@@ -46,6 +46,6 @@ docs/        SPEC.pdf
 > SPEC.pdf was not in the repo when this file was written. Replace these placeholders with the four phases from section 17.
 
 - [ ] Phase 1: TODO (from spec §17)
-- [ ] Phase 2: TODO (from spec §17)
+- [x] Phase 2: TODO (from spec §17). Done: reusable level systems (medkits, supply spawner and drops, data-driven wave manager with the 40-zombie cap)
 - [ ] Phase 3: TODO (from spec §17)
 - [ ] Phase 4: TODO (from spec §17)

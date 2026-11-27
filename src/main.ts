@@ -1,8 +1,7 @@
 import { CANVAS_HEIGHT, CANVAS_WIDTH, RESTART_KEY } from './data/config';
 import { startLoop } from './core/loop';
 import { createInput } from './core/input';
-import { isDead } from './entities/player';
-import { createWorld, renderWorld, updateWorld } from './world';
+import { createWorld, isOver, renderWorld, updateWorld } from './world';
 import { createFpsCounter } from './ui/fps';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -15,7 +14,7 @@ let world = createWorld();
 
 startLoop({
   update: (dt) => {
-    if (isDead(world.player) && input.consumePress(RESTART_KEY)) world = createWorld(world.player.character);
+    if (isOver(world) && input.consumePress(RESTART_KEY)) world = createWorld(world.player.character);
     updateWorld(world, input, dt);
     input.clearPresses();
   },

@@ -1,4 +1,5 @@
 import { TIMER_EPSILON, type AbilityTiming } from '../data/config';
+import { ceilSeconds } from '../core/time';
 
 /** Ready → (press) Active for durationSeconds → Cooldown for cooldownSeconds → Ready. */
 export type AbilityPhase = 'ready' | 'active' | 'cooldown';
@@ -37,7 +38,7 @@ export function updateAbility(a: AbilityState, t: AbilityTiming, dt: number, pre
 }
 
 /** Whole seconds left, rounded up, so the HUD reads 10 → 1 and never 0 while still running. */
-export const secondsShown = (a: AbilityState): number => Math.ceil(a.timeLeft - TIMER_EPSILON);
+export const secondsShown = (a: AbilityState): number => ceilSeconds(a.timeLeft);
 
 /** HUD status text: "READY", "ACTIVE 7s" or "COOLDOWN 24s". */
 export function abilityStatusText(a: AbilityState): string {

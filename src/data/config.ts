@@ -256,17 +256,17 @@ export const EXPLOSION_VISUAL_SECONDS = 0.3;
 export const EXPLOSION_START_RADIUS_FRACTION = 0.2;
 export const COLOR_EXPLOSION = '255, 140, 66'; // rgb triplet; alpha fades over the blast
 
-// TODO remove when zombies drop ammo: static test ammo boxes (positions not from spec)
-export const AMMO_BOX_SIZE = 18;
-export const AMMO_BOX_POSITIONS: readonly { x: number; y: number }[] = [
-  { x: 120, y: 620 },
-  { x: 760, y: 90 },
-  { x: 1180, y: 380 },
-  { x: 560, y: 640 },
-];
+// Pickup visuals (presentation). Supply locations and drop rules are per level, below.
+export const PICKUP_SIZE = 18;
 export const COLOR_AMMO_BOX = '#c8b273';
 export const COLOR_AMMO_BOX_EDGE = '#3b3423';
-export const AMMO_BOX_EDGE_WIDTH = 2;
+export const COLOR_MEDKIT = '#f2f3f5';
+export const COLOR_MEDKIT_CROSS = '#e04848';
+export const MEDKIT_CROSS_THICKNESS = 4;
+export const PICKUP_EDGE_WIDTH = 2;
+/** Dropped pickups blink for their last few seconds before vanishing. */
+export const PICKUP_BLINK_SECONDS = 3;
+export const PICKUP_BLINK_HZ = 4;
 /** Projectiles spawn at the tip of the aim arrow. */
 export const MUZZLE_OFFSET = PLAYER_RADIUS + ARROW_TIP_LENGTH;
 /** Tolerance for timer comparisons, so 10 steps of 1/60 s count as exactly 1/6 s. */
@@ -276,8 +276,10 @@ export const TIMER_EPSILON = 1e-9;
 export const HIT_FLASH_SECONDS = 0.1;
 export const COLOR_HIT_FLASH = '#ffffff';
 
-// Player health (PLACEHOLDER: no brief yet; take from spec)
-export const PLAYER_MAX_HEALTH = 100; // PLACEHOLDER
+// Spec §4.4 Health and medkits (values from task brief; verify against SPEC.pdf)
+export const PLAYER_MAX_HEALTH = 100;
+/** A medkit heals this much, never above max health, and is left on the ground at full health. */
+export const MEDKIT_HEAL = 30;
 export const RESTART_KEY = 'Enter';
 
 // Spec §7.1–7.7 Zombies (Runner/Tank/Spitter from task brief; verify against SPEC.pdf.
@@ -387,10 +389,129 @@ export const SEPARATION_WEIGHT = 0.9;
 /** Melee reach beyond touching: attack when edges are within this many px. */
 export const MELEE_REACH = 4;
 
-// Zombie spawning (debug/testing; real wave rules come later)
-export const ZOMBIE_SPAWN_MIN_DISTANCE = 300; // px from the player
+// Spec §15–16 Waves and spawning (rules from task brief; timings PLACEHOLDER, verify against SPEC.pdf)
+/** Player's safe area: no zombie ever appears closer than this many px. */
+export const ZOMBIE_SPAWN_MIN_DISTANCE = 300;
 export const ZOMBIE_SPAWN_MAX_TRIES = 60;
-export const INITIAL_ZOMBIES: readonly ZombieType[] = ['walker', 'walker', 'walker']; // PLACEHOLDER
+/** Most standard zombies alive at once. Extra ones wait in a queue until others die. */
+export const ACTIVE_ZOMBIE_CAP = 40;
+/** Types that don't count toward the cap (the boss will go here). */
+export const CAP_EXEMPT_TYPES: readonly ZombieType[] = [];
+/** A warning marker shows where a group will appear this long before it does. */
+export const SPAWN_WARNING_SECONDS = 1.5; // PLACEHOLDER
+/** Group members appear within this many px of the warning marker. */
+export const SPAWN_GROUP_SPREAD = 40; // PLACEHOLDER
+/** Seconds between a spawn group's batches when the level doesn't say. */
+export const DEFAULT_GROUP_INTERVAL_SECONDS = 3; // PLACEHOLDER
+
+/**
+ * One line of a wave: `count` zombies of `type`, arriving in batches of `groupSize`.
+ * The first batch comes `delaySeconds` after the wave starts, then one every `intervalSeconds`.
+ */
+export interface SpawnGroupDef {
+  type: ZombieType;
+  count: number;
+  groupSize: number;
+  delaySeconds: number;
+  intervalSeconds?: number; // DEFAULT_GROUP_INTERVAL_SECONDS when left out
+}
+export interface WaveDef {
+  groups: SpawnGroupDef[];
+}
+
+// Spec §4.4, §6.6 Supplies: pickups at supply locations and as zombie drops, set per level.
+export type PickupKind = 'ammo' | 'medkit';
+export interface WeightedPickup {
+  kind: PickupKind;
+  weight: number; // relative odds within its table
+}
+export interface SupplyConfig {
+  /** Predefined supply locations; each holds one pickup and refills after it is taken. */
+  points: readonly { x: number; y: number }[];
+  table: WeightedPickup[];
+  respawnSeconds: number;
+}
+export interface DropRule {
+  /** Chance (0..1) that a killed zombie of each type drops something. */
+  chance: Record<ZombieType, number>;
+  table: WeightedPickup[];
+  /** Dropped pickups vanish after this long; supply-point pickups stay. */
+  lifetimeSeconds: number;
+  /** No new drops while this many dropped pickups are already lying around. */
+  maxOnGround: number;
+}
+export interface LevelDef {
+  name: string;
+  waves: WaveDef[];
+  /** Countdown before the first wave and between waves. */
+  intermissionSeconds: number;
+  supply: SupplyConfig;
+  drops: DropRule;
+}
+
+/** Test level: three waves using all four zombie types. Wave 3 sends 60 to exercise the cap. */
+export const TEST_LEVEL: LevelDef = {
+  name: 'Test Waves',
+  intermissionSeconds: 5,
+  waves: [
+    {
+      groups: [
+        { type: 'walker', count: 8, groupSize: 4, delaySeconds: 0, intervalSeconds: 5 },
+        { type: 'runner', count: 4, groupSize: 2, delaySeconds: 6, intervalSeconds: 4 },
+      ],
+    },
+    {
+      groups: [
+        { type: 'walker', count: 12, groupSize: 4, delaySeconds: 0, intervalSeconds: 4 },
+        { type: 'spitter', count: 4, groupSize: 2, delaySeconds: 3, intervalSeconds: 6 },
+        { type: 'runner', count: 6, groupSize: 3, delaySeconds: 8, intervalSeconds: 5 },
+        { type: 'tank', count: 1, groupSize: 1, delaySeconds: 12 },
+      ],
+    },
+    {
+      groups: [
+        { type: 'walker', count: 30, groupSize: 6, delaySeconds: 0, intervalSeconds: 2 },
+        { type: 'runner', count: 16, groupSize: 4, delaySeconds: 2, intervalSeconds: 2 },
+        { type: 'spitter', count: 8, groupSize: 2, delaySeconds: 4, intervalSeconds: 3 },
+        { type: 'tank', count: 6, groupSize: 2, delaySeconds: 6, intervalSeconds: 5 },
+      ],
+    },
+  ],
+  supply: {
+    points: [
+      { x: 120, y: 620 },
+      { x: 760, y: 90 },
+      { x: 1180, y: 380 },
+      { x: 560, y: 640 },
+    ],
+    table: [
+      { kind: 'ammo', weight: 2 },
+      { kind: 'medkit', weight: 1 },
+    ],
+    respawnSeconds: 20,
+  },
+  drops: {
+    chance: { walker: 0.08, runner: 0.08, tank: 0.5, spitter: 0.15 },
+    table: [
+      { kind: 'ammo', weight: 3 },
+      { kind: 'medkit', weight: 1 },
+    ],
+    lifetimeSeconds: 20,
+    maxOnGround: 8,
+  },
+};
+
+// Wave HUD and spawn warnings (presentation)
+export const COLOR_SPAWN_WARNING = '224, 72, 72'; // rgb triplet; alpha pulses
+export const SPAWN_WARNING_PULSE_HZ = 3;
+export const SPAWN_WARNING_MIN_ALPHA = 0.4; // outer ring pulses between this and 1
+export const SPAWN_WARNING_INNER_ALPHA = 0.8;
+export const SPAWN_WARNING_LINE_WIDTH = 3;
+export const SPAWN_WARNING_FONT = 'bold 20px Consolas, ui-monospace, monospace';
+export const COLOR_WAVE_CLEAR = '#4fc37a';
+
+/** DEBUG: kills every zombie on the map, to step through waves quickly. */
+export const DEBUG_KILL_ALL_KEY = 'KeyK';
 /** DEBUG: press these keys to spawn one zombie of that type. */
 export const DEBUG_SPAWN_KEYS: Record<ZombieType, string> = {
   walker: 'Digit6',
@@ -401,7 +522,7 @@ export const DEBUG_SPAWN_KEYS: Record<ZombieType, string> = {
 /** DEBUG: spawns a mixed horde for the 60 FPS stress test. */
 export const DEBUG_HORDE_KEY = 'Digit0';
 export const DEBUG_HORDE_SIZE = 40;
-export const DEBUG_HELP_TEXT = '6 Walker  7 Runner  8 Tank  9 Spitter  0 Horde of 40  C Switch character';
+export const DEBUG_HELP_TEXT = '6 Walker  7 Runner  8 Tank  9 Spitter  0 Horde of 40  K Kill all  C Switch character';
 
 // Zombie health bars (presentation)
 export const ZOMBIE_HEALTH_BAR_HEIGHT = 4;
