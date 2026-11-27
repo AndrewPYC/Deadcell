@@ -7,6 +7,8 @@ import { inMeleeRange, meleeStep } from './melee';
 import { fieldFor, type NavCache } from './navCache';
 import { flowDirection } from './navigation';
 import { canSpit, rangeIntent } from './spitter';
+import { isFrozen, speedMultiplier, tickStatus } from './statusEffects';
+import { KNOCKBACK_DECAY } from './characterAbility';
 
 export interface ZombieWorld {
   walls: readonly Rect[];
@@ -85,15 +87,25 @@ export function updateZombies(
 
   for (const z of zombies) {
     const s = ZOMBIES[z.type];
+    if (isFrozen(z.status)) {
+      // Frozen solid: no moving, no attacking, attack timer on hold.
+      z.status = tickStatus(z.status, dt, KNOCKBACK_DECAY);
+      z.flashLeft = Math.max(0, z.flashLeft - dt);
+      continue;
+    }
     const dist = Math.hypot(player.x - z.pos.x, player.y - z.pos.y);
     const clear = hasClearPath(z.pos, player, z.radius, world.walls);
 
+    const maxSpeed = s.speed * speedMultiplier(z.status, s);
     const want = desiredDirection(z, s, player, playerRadius, dist, clear, world);
     const push = separation(z, zombies);
-    let v = vec((want.x + push.x * SEPARATION_WEIGHT) * s.speed, (want.y + push.y * SEPARATION_WEIGHT) * s.speed);
+    let v = vec((want.x + push.x * SEPARATION_WEIGHT) * maxSpeed, (want.y + push.y * SEPARATION_WEIGHT) * maxSpeed);
     const speed = length(v);
-    if (speed > s.speed) v = vec((v.x / speed) * s.speed, (v.y / speed) * s.speed);
-    z.pos = moveCircle(z.pos, vec(v.x * dt, v.y * dt), z.radius, world.walls, world.width, world.height);
+    if (speed > maxSpeed) v = vec((v.x / speed) * maxSpeed, (v.y / speed) * maxSpeed);
+    // Knockback is added on top of the capped walk so it can push a zombie backwards.
+    const kb = z.status.knockback;
+    const delta = vec((v.x + kb.x) * dt, (v.y + kb.y) * dt);
+    z.pos = moveCircle(z.pos, delta, z.radius, world.walls, world.width, world.height);
     z.pos = keepOutOfPlayer(z, player, playerRadius, world);
 
     const newDist = Math.hypot(player.x - z.pos.x, player.y - z.pos.y);
@@ -112,6 +124,7 @@ export function updateZombies(
         z.attackCooldown = s.attackInterval;
       }
     }
+    z.status = tickStatus(z.status, dt, KNOCKBACK_DECAY);
     z.flashLeft = Math.max(0, z.flashLeft - dt);
   }
   return { meleeDamage, spits };

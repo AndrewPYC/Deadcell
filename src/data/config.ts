@@ -25,13 +25,81 @@ export const HUD_ROW_HEIGHT = 22; // top-left debug rows
 // Spec §4.1 Player body (values from task brief; verify against SPEC.pdf)
 export const PLAYER_DIAMETER = 32;
 export const PLAYER_RADIUS = PLAYER_DIAMETER / 2;
-export const PLAYER_COLOR = '#2f7de1';
 /** Fraction of the circle's circumference covered by the aim arrow's base. */
 export const ARROW_BASE_ARC_FRACTION = 1 / 6;
 /** Spec cap: the arrow's base may cover at most one-fifth of the circumference. */
 export const ARROW_MAX_BASE_ARC_FRACTION = 1 / 5;
 /** How far the arrow tip sticks out past the circle's edge, in px. */
 export const ARROW_TIP_LENGTH = 12;
+
+// Spec §5.1–5.3 Characters and abilities (values from task brief; verify against SPEC.pdf)
+// Both characters share speed, health, stamina and weapons; only color and ability differ.
+export type CharacterId = 'zane' | 'nepbava';
+export type AbilityId = 'windSurge' | 'frostPulse';
+export interface CharacterDef {
+  name: string;
+  color: string; // body and aim arrow
+  ability: AbilityId;
+}
+export const CHARACTERS: Record<CharacterId, CharacterDef> = {
+  zane: { name: 'Zane', color: '#2f7de1', ability: 'windSurge' }, // blue
+  nepbava: { name: 'Nepbava', color: '#f48fd0', ability: 'frostPulse' }, // pink, lighter than the Runner
+};
+export const DEFAULT_CHARACTER: CharacterId = 'zane';
+export interface AbilityTiming {
+  durationSeconds: number;
+  /** Starts only after the ability ends. */
+  cooldownSeconds: number;
+}
+export interface AbilityDef extends AbilityTiming {
+  name: string;
+}
+export const ABILITIES: Record<AbilityId, AbilityDef> = {
+  windSurge: { name: 'Wind Surge', durationSeconds: 10, cooldownSeconds: 15 },
+  frostPulse: { name: 'Frost Pulse', durationSeconds: 10, cooldownSeconds: 15 },
+};
+export const ABILITY_KEY = 'KeyQ';
+/** Zane: bullets knock back, faster fire and reload. Ammo use and move speed unchanged. */
+export const WIND_SURGE = {
+  fireRateMultiplier: 1.25, // +25%
+  reloadTimeMultiplier: 0.75, // -25%
+  knockbackSpeed: 240, // PLACEHOLDER px/s pushed on a zombie with no resistance
+  knockbackSeconds: 0.12, // PLACEHOLDER time for the push to decay to 0
+};
+/** Nepbava: one pulse on activation, then weapon hits slow for the rest of the ability. */
+export const FROST_PULSE = {
+  radius: 120, // px from the player's center to the zombie's center
+  freezeSeconds: 1.5,
+  hitSlowSeconds: 2, // refreshed by each hit; the slow amount is each zombie's iceSlowMultiplier
+};
+/**
+ * Spec boss resistances: no knockback (but still takes damage), never frozen, 20% ice slow.
+ * Used by the boss zombie type when it is added.
+ */
+export interface Resistances {
+  knockbackResistance: number; // 0 = full knockback, 1 = immune
+  freezeImmune: boolean; // true = can't be fully frozen; ice only slows
+  iceSlowMultiplier: number; // speed is multiplied by this while slowed by ice
+}
+export const BOSS_RESISTANCES: Resistances = {
+  knockbackResistance: 1,
+  freezeImmune: true,
+  iceSlowMultiplier: 0.8,
+};
+/** DEBUG: cycles through the characters. Remove once character select exists. */
+export const DEBUG_SWITCH_CHARACTER_KEY = 'KeyC';
+
+// Ability visuals and HUD (presentation)
+export const COLOR_FROZEN_TINT = 'rgba(170, 225, 255, 0.7)';
+export const COLOR_FROZEN_EDGE = '#e6f7ff';
+export const COLOR_SLOWED_EDGE = '#8fd3ff';
+export const STATUS_EDGE_WIDTH = 2;
+export const COLOR_FROST_PULSE = '143, 211, 255'; // rgb triplet; alpha fades over the ring
+export const ABILITY_ICON_SIZE = 44;
+export const ABILITY_ICON_BORDER = 3;
+export const ABILITY_TEXT_GAP = 10;
+export const COLOR_ABILITY_DIM = 'rgba(10, 11, 13, 0.65)';
+export const COLOR_ABILITY_READY = '#4fc37a';
 
 // Spec §4.2 Movement (values from task brief; verify against SPEC.pdf)
 export const PLAYER_BASE_SPEED = 180; // px/s
@@ -221,7 +289,8 @@ export interface SpitStats {
   radius: number; // px
   color: string;
 }
-export interface ZombieStats {
+/** Resistances (knockback, freeze, ice slow) are the hooks the character abilities use. */
+export interface ZombieStats extends Resistances {
   name: string;
   health: number;
   speed: number; // px/s
@@ -234,10 +303,6 @@ export interface ZombieStats {
   /** Ranged zombies try to stay inside this distance band from the player. */
   preferredRange: { min: number; max: number } | null;
   spit: SpitStats | null;
-  // Ability hooks (used by character abilities later)
-  knockbackResistance: number; // 0 = full knockback, 1 = immune
-  freezeImmune: boolean; // true = can't be fully frozen; ice only slows
-  iceSlowMultiplier: number; // speed is multiplied by this while slowed by ice
 }
 export const ZOMBIES: Record<ZombieType, ZombieStats> = {
   walker: {
@@ -254,7 +319,7 @@ export const ZOMBIES: Record<ZombieType, ZombieStats> = {
     spit: null,
     knockbackResistance: 0,
     freezeImmune: false,
-    iceSlowMultiplier: 0.5, // PLACEHOLDER
+    iceSlowMultiplier: 0.5, // Frost Pulse hits slow by 50%
   },
   runner: {
     name: 'Runner',
@@ -270,7 +335,7 @@ export const ZOMBIES: Record<ZombieType, ZombieStats> = {
     spit: null,
     knockbackResistance: 0,
     freezeImmune: false,
-    iceSlowMultiplier: 0.5, // PLACEHOLDER
+    iceSlowMultiplier: 0.5, // Frost Pulse hits slow by 50%
   },
   tank: {
     name: 'Tank',
@@ -284,7 +349,7 @@ export const ZOMBIES: Record<ZombieType, ZombieStats> = {
     behavior: 'melee',
     preferredRange: null,
     spit: null,
-    knockbackResistance: 0.75, // PLACEHOLDER: brief says "resists", not how much
+    knockbackResistance: 0.75, // PLACEHOLDER: brief says "heavily reduced", not how much
     freezeImmune: true,
     iceSlowMultiplier: 0.75, // ice slows tanks by only 25%
   },
@@ -307,7 +372,7 @@ export const ZOMBIES: Record<ZombieType, ZombieStats> = {
     },
     knockbackResistance: 0,
     freezeImmune: false,
-    iceSlowMultiplier: 0.5, // PLACEHOLDER
+    iceSlowMultiplier: 0.5, // Frost Pulse hits slow by 50%
   },
 };
 
@@ -336,7 +401,7 @@ export const DEBUG_SPAWN_KEYS: Record<ZombieType, string> = {
 /** DEBUG: spawns a mixed horde for the 60 FPS stress test. */
 export const DEBUG_HORDE_KEY = 'Digit0';
 export const DEBUG_HORDE_SIZE = 40;
-export const DEBUG_HELP_TEXT = '6 Walker  7 Runner  8 Tank  9 Spitter  0 Horde of 40';
+export const DEBUG_HELP_TEXT = '6 Walker  7 Runner  8 Tank  9 Spitter  0 Horde of 40  C Switch character';
 
 // Zombie health bars (presentation)
 export const ZOMBIE_HEALTH_BAR_HEIGHT = 4;
@@ -362,6 +427,5 @@ export const HUD_SLOT_GAP = 14;
 export const COLOR_SLOT_ACTIVE = '#ffd166';
 export const COLOR_SLOT_LOCKED = '#8a8d93';
 // TODO Spec §?: zombies
-// TODO Spec §?: abilities
 // TODO Spec §?: XP formula
 // TODO Spec §?: chest odds

@@ -1,4 +1,4 @@
-import type { Vec2 } from '../core/math';
+import { normalize, type Vec2 } from '../core/math';
 import type { Detonation, Projectile } from '../entities/projectile';
 import { circlesOverlap } from './collision';
 
@@ -14,6 +14,9 @@ export interface DirectHitDetonation extends Detonation {
   /** The target the rocket struck; it takes direct-hit damage, not splash. */
   directTarget: Damageable;
 }
+
+/** Called for each target a weapon damages; `dir` is the unit direction the hit pushes. */
+export type OnHit<T extends Damageable> = (target: T, dir: Vec2) => void;
 
 export interface HitResult {
   projectiles: Projectile[];
@@ -41,11 +44,13 @@ export function resolveHitsOnPlayer(projectiles: readonly Projectile[], pos: Vec
  * Each projectile damages the first living thing it overlaps and is consumed, so a zombie
  * hit by several shotgun pellets takes the sum. Explosive projectiles also report a
  * detonation. Mutates health and flash timers; returns surviving projectiles.
+ * `onHit` lets abilities add effects (knockback, slow) along the projectile's travel direction.
  */
-export function resolveProjectileHits(
+export function resolveProjectileHits<T extends Damageable>(
   projectiles: readonly Projectile[],
-  targets: Damageable[],
+  targets: T[],
   flashSeconds: number,
+  onHit?: OnHit<T>,
 ): HitResult {
   const survivors: Projectile[] = [];
   const detonations: DirectHitDetonation[] = [];
@@ -58,6 +63,7 @@ export function resolveProjectileHits(
     }
     target.health = Math.max(0, target.health - p.damage);
     target.flashLeft = flashSeconds;
+    onHit?.(target, normalize(p.vel));
     hits++;
     if (p.splash) detonations.push({ pos: p.pos, splash: p.splash, directTarget: target });
   }

@@ -49,6 +49,14 @@ export function tryPickupAmmo(w: WeaponState, stats: WeaponStats): PickupResult 
 export const reloadProgress = (w: WeaponState, stats: WeaponStats): number =>
   isReloading(w) ? 1 - w.reloadLeft / stats.reloadSeconds : 0;
 
+/** Temporary changes from abilities. Ammo use is never changed. */
+export interface WeaponMods {
+  fireRateMultiplier: number;
+  /** Reload takes reloadSeconds × this; reloadLeft stays in base seconds so progress reads right. */
+  reloadTimeMultiplier: number;
+}
+export const NO_WEAPON_MODS: WeaponMods = { fireRateMultiplier: 1, reloadTimeMultiplier: 1 };
+
 export interface WeaponStep {
   state: WeaponState;
   /** Number of shots fired this step; the caller spawns the projectiles. */
@@ -61,11 +69,12 @@ export function updateWeapon(
   stats: WeaponStats,
   dt: number,
   triggerHeld: boolean,
+  mods: WeaponMods = NO_WEAPON_MODS,
 ): WeaponStep {
   let { magazine, reserve, cooldown, reloadLeft } = w;
 
   if (reloadLeft > 0) {
-    reloadLeft -= dt;
+    reloadLeft -= dt / mods.reloadTimeMultiplier;
     if (reloadLeft <= TIMER_EPSILON) {
       const moved = Math.min(stats.magazineSize - magazine, reserve);
       magazine += moved;
@@ -76,7 +85,7 @@ export function updateWeapon(
 
   // Fire using the cooldown as it stood at the start of this step, then let time pass.
   let shots = 0;
-  const interval = 1 / stats.fireRate;
+  const interval = 1 / (stats.fireRate * mods.fireRateMultiplier);
   while (triggerHeld && reloadLeft === 0 && magazine > 0 && cooldown <= TIMER_EPSILON) {
     magazine--;
     shots++;

@@ -15,7 +15,7 @@ let world = createWorld();
 
 startLoop({
   update: (dt) => {
-    if (isDead(world.player) && input.consumePress(RESTART_KEY)) world = createWorld();
+    if (isDead(world.player) && input.consumePress(RESTART_KEY)) world = createWorld(world.player.character);
     updateWorld(world, input, dt);
     input.clearPresses();
   },

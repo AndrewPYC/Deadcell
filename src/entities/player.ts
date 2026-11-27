@@ -5,8 +5,9 @@ import {
   ARROW_TIP_LENGTH,
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
+  CHARACTERS,
+  DEFAULT_CHARACTER,
   MAP_WALLS,
-  PLAYER_COLOR,
   PLAYER_RADIUS,
   COLOR_HIT_FLASH,
   DEBUG_ALL_WEAPONS_OWNED,
@@ -14,8 +15,10 @@ import {
   PLAYER_MAX_HEALTH,
   STARTING_WEAPON,
   WEAPON_SLOTS,
+  type CharacterId,
   type WeaponId,
 } from '../data/config';
+import { createAbility, type AbilityState } from '../systems/ability';
 import { createLoadout, type Loadout } from '../systems/loadout';
 import { moveDirection, moveVelocity, type MoveKeys } from '../systems/movement';
 import { canSprint, createStamina, updateStamina, type StaminaState } from '../systems/stamina';
@@ -33,6 +36,9 @@ export interface Player {
   /** Total XP earned. Levels come with the level system. */
   xp: number;
   flashLeft: number;
+  /** Characters differ only by color and ability (spec §5). */
+  character: CharacterId;
+  ability: AbilityState;
 }
 
 export const isDead = (p: Player): boolean => p.health <= 0;
@@ -45,7 +51,7 @@ export function damagePlayer(p: Player, amount: number): void {
 
 const startingWeapons = (): WeaponId[] => (DEBUG_ALL_WEAPONS_OWNED ? [...WEAPON_SLOTS] : [STARTING_WEAPON]);
 
-export const createPlayer = (pos: Vec2): Player => ({
+export const createPlayer = (pos: Vec2, character: CharacterId = DEFAULT_CHARACTER): Player => ({
   pos,
   aim: 0,
   stamina: createStamina(),
@@ -56,7 +62,16 @@ export const createPlayer = (pos: Vec2): Player => ({
   maxHealth: PLAYER_MAX_HEALTH,
   xp: 0,
   flashLeft: 0,
+  character,
+  ability: createAbility(),
 });
+
+/** DEBUG: next character in the list, with a fresh ability. Everything else is kept. */
+export function switchCharacter(p: Player): void {
+  const ids = Object.keys(CHARACTERS) as CharacterId[];
+  p.character = ids[(ids.indexOf(p.character) + 1) % ids.length];
+  p.ability = createAbility();
+}
 
 const readMoveKeys = (input: Input): MoveKeys => ({
   up: input.isDown('KeyW'),
@@ -87,12 +102,15 @@ export function arrowPoints(center: Vec2, radius: number, aim: number): [Vec2, V
 }
 
 export function drawPlayer(ctx: CanvasRenderingContext2D, p: Player): void {
-  ctx.fillStyle = p.flashLeft > 0 ? COLOR_HIT_FLASH : PLAYER_COLOR;
+  const color = CHARACTERS[p.character].color;
+  ctx.fillStyle = p.flashLeft > 0 ? COLOR_HIT_FLASH : color;
   ctx.beginPath();
   ctx.arc(p.pos.x, p.pos.y, PLAYER_RADIUS, 0, Math.PI * 2);
   ctx.fill();
 
+  // The arrow always shows the character color, even during the hit flash.
   const [a, tip, b] = arrowPoints(p.pos, PLAYER_RADIUS, p.aim);
+  ctx.fillStyle = color;
   ctx.beginPath();
   ctx.moveTo(a.x, a.y);
   ctx.lineTo(tip.x, tip.y);

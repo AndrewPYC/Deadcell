@@ -1,6 +1,6 @@
-import type { Vec2 } from '../core/math';
+import { normalize, vec, type Vec2 } from '../core/math';
 import type { Splash } from '../data/config';
-import type { Damageable } from './combat';
+import type { Damageable, OnHit } from './combat';
 
 /** Linear falloff: full centerDamage at distance 0, nothing at or beyond the radius. */
 export function splashDamage(distance: number, splash: Splash): number {
@@ -12,13 +12,15 @@ export function splashDamage(distance: number, splash: Splash): number {
  * Damages every living target whose center is inside the blast. `exclude` is the target
  * hit directly by the rocket, which takes the direct-hit damage instead of splash.
  * Only targets passed in are affected; the player is never passed, so blasts never hurt them.
+ * `onHit` gets the direction away from the blast center.
  */
-export function applySplash(
+export function applySplash<T extends Damageable>(
   center: Vec2,
   splash: Splash,
-  targets: Damageable[],
+  targets: T[],
   flashSeconds: number,
   exclude: Damageable | null = null,
+  onHit?: OnHit<T>,
 ): number {
   let hit = 0;
   for (const t of targets) {
@@ -27,6 +29,7 @@ export function applySplash(
     if (dmg <= 0) continue;
     t.health = Math.max(0, t.health - dmg);
     t.flashLeft = flashSeconds;
+    onHit?.(t, normalize(vec(t.pos.x - center.x, t.pos.y - center.y)));
     hit++;
   }
   return hit;

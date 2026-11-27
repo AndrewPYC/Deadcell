@@ -4,7 +4,7 @@ import { MUZZLE_OFFSET, WEAPONS, WEAPON_SLOTS, type WeaponId } from '../data/con
 import type { Player } from '../entities/player';
 import { createProjectile, type Projectile } from '../entities/projectile';
 import { isSwitching, requestSwitch, updateSwitch } from './loadout';
-import { shotAngles, startReload, updateWeapon } from './weapon';
+import { NO_WEAPON_MODS, shotAngles, startReload, updateWeapon, type WeaponMods } from './weapon';
 
 const SLOT_KEY_PREFIX = 'Digit';
 const SLOT_KEY_FIRST = 1;
@@ -14,6 +14,7 @@ export function updatePlayerWeapon(
   p: Player,
   input: Input,
   dt: number,
+  mods: WeaponMods = NO_WEAPON_MODS,
   rng: () => number = Math.random,
 ): Projectile[] {
   WEAPON_SLOTS.forEach((id, i) => {
@@ -31,7 +32,7 @@ export function updatePlayerWeapon(
   let shots = 0;
   for (const id of Object.keys(p.loadout.weapons) as WeaponId[]) {
     const trigger = id === current && !switching && input.mouseDown();
-    const step = updateWeapon(p.loadout.weapons[id], WEAPONS[id], dt, trigger);
+    const step = updateWeapon(p.loadout.weapons[id], WEAPONS[id], dt, trigger, mods);
     setWeapon(p, id, step.state);
     if (id === current) shots = step.shots;
   }
