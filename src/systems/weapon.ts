@@ -30,6 +30,10 @@ export function startReload(w: WeaponState, stats: WeaponStats): WeaponState {
   return canReload(w, stats) ? { ...w, reloadLeft: stats.reloadSeconds } : w;
 }
 
+/** Auto reload: an empty magazine starts reloading on its own if there is reserve ammo. */
+export const autoReload = (w: WeaponState, stats: WeaponStats): WeaponState =>
+  w.magazine === 0 ? startReload(w, stats) : w;
+
 export const cancelReload = (w: WeaponState): WeaponState => ({ ...w, reloadLeft: 0 });
 
 export const isReserveFull = (w: WeaponState, stats: WeaponStats): boolean => w.reserve >= stats.reserveCap;

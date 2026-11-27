@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  autoReload,
   canFire,
   canReload,
   createWeaponState,
@@ -11,6 +12,10 @@ import {
   type WeaponState,
 } from '../src/systems/weapon';
 import { FIXED_STEP_SECONDS, WEAPONS } from '../src/data/config';
+import { updatePlayerWeapon } from '../src/systems/playerWeapon';
+import { createPlayer } from '../src/entities/player';
+import { vec } from '../src/core/math';
+import type { Input } from '../src/core/input';
 
 const rifle = WEAPONS.assaultRifle;
 
@@ -155,5 +160,46 @@ describe('shot direction', () => {
     expect(a[0]).toBeCloseTo(-0.2);
     expect(a[1]).toBeCloseTo(0);
     expect(a[2]).toBeCloseTo(0.2);
+  });
+});
+
+describe('auto reload', () => {
+  it('starts a reload on its own when the magazine is empty and there is reserve', () => {
+    const w = autoReload({ magazine: 0, reserve: 75, cooldown: 0, reloadLeft: 0 }, rifle);
+    expect(isReloading(w)).toBe(true);
+    expect(w.reloadLeft).toBe(rifle.reloadSeconds);
+  });
+
+  it('does nothing while rounds are left in the magazine', () => {
+    const w = { magazine: 1, reserve: 75, cooldown: 0, reloadLeft: 0 };
+    expect(autoReload(w, rifle)).toEqual(w);
+  });
+
+  it('does nothing when the reserve is empty too', () => {
+    const w = { magazine: 0, reserve: 0, cooldown: 0, reloadLeft: 0 };
+    expect(isReloading(autoReload(w, rifle))).toBe(false);
+  });
+
+  it('does not restart a reload already in progress', () => {
+    const w = { magazine: 0, reserve: 75, cooldown: 0, reloadLeft: 0.5 };
+    expect(autoReload(w, rifle).reloadLeft).toBe(0.5);
+  });
+
+  it('holding the trigger empties the magazine, reloads by itself and keeps firing', () => {
+    const p = createPlayer(vec(100, 100));
+    const input: Input = {
+      isDown: () => false,
+      consumePress: () => false,
+      clearPresses: () => {},
+      mouse: vec(200, 100),
+      mouseDown: () => true,
+    };
+    let shots = 0;
+    const seconds = rifle.magazineSize / rifle.fireRate + rifle.reloadSeconds + 1;
+    for (let i = 0; i < Math.round(seconds / FIXED_STEP_SECONDS); i++) {
+      shots += updatePlayerWeapon(p, input, FIXED_STEP_SECONDS).length;
+    }
+    expect(shots).toBeGreaterThan(rifle.magazineSize);
+    expect(p.loadout.weapons.assaultRifle.reserve).toBe(rifle.startingReserve - rifle.magazineSize);
   });
 });

@@ -4,12 +4,15 @@ import { MUZZLE_OFFSET, WEAPONS, WEAPON_SLOTS, type WeaponId } from '../data/con
 import type { Player } from '../entities/player';
 import { createProjectile, type Projectile } from '../entities/projectile';
 import { isSwitching, requestSwitch, updateSwitch } from './loadout';
-import { NO_WEAPON_MODS, shotAngles, startReload, updateWeapon, type WeaponMods } from './weapon';
+import { autoReload, NO_WEAPON_MODS, shotAngles, startReload, updateWeapon, type WeaponMods } from './weapon';
 
 const SLOT_KEY_PREFIX = 'Digit';
 const SLOT_KEY_FIRST = 1;
 
-/** Handles switching (1/2/3), reload (R) and firing (held left mouse). Returns new projectiles. */
+/**
+ * Handles switching (1/2/3), reload (R, or automatic when empty) and firing (held left mouse).
+ * Returns new projectiles.
+ */
 export function updatePlayerWeapon(
   p: Player,
   input: Input,
@@ -36,6 +39,8 @@ export function updatePlayerWeapon(
     setWeapon(p, id, step.state);
     if (id === current) shots = step.shots;
   }
+  // Auto reload the drawn weapon the moment it runs dry (or once ammo is picked up for it).
+  if (!switching) setWeapon(p, current, autoReload(p.loadout.weapons[current], WEAPONS[current]));
 
   const stats = WEAPONS[current];
   const muzzle = vec(p.pos.x + Math.cos(p.aim) * MUZZLE_OFFSET, p.pos.y + Math.sin(p.aim) * MUZZLE_OFFSET);

@@ -26,7 +26,7 @@ import { isReloading, isReserveFull, reloadProgress, type WeaponState } from '..
 function statusLine(w: WeaponState, switching: boolean): string {
   if (switching) return 'SWITCHING';
   if (isReloading(w)) return 'RELOADING';
-  if (w.magazine === 0) return w.reserve > 0 ? 'EMPTY · PRESS R' : 'OUT OF AMMO';
+  if (w.magazine === 0) return w.reserve > 0 ? 'EMPTY' : 'OUT OF AMMO';
   return '';
 }
 
