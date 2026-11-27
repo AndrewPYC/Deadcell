@@ -21,7 +21,7 @@ const target = (x: number, y: number, health = 1000): Damageable => ({ pos: vec(
 describe('weapon stats match the brief', () => {
   it('shotgun', () => {
     expect(shotgun).toMatchObject({
-      projectilesPerShot: 6, damage: 8, fireRate: 1, magazineSize: 5, startingReserve: 20, reloadSeconds: 2.5,
+      projectilesPerShot: 6, damage: 12, fireRate: 1, magazineSize: 5, startingReserve: 20, reloadSeconds: 2.5,
     });
     expect(shotgun.pelletSpreadRadians).toBeCloseTo(deg(30));
   });
@@ -60,7 +60,7 @@ describe('shotgun pellet spread', () => {
     const t = target(100, 100);
     const pellets = Array.from({ length: 6 }, () => createProjectile(t.pos, 0, shotgun));
     resolveProjectileHits(pellets, [t], 0.1);
-    expect(t.health).toBe(1000 - 6 * 8);
+    expect(t.health).toBe(1000 - 6 * shotgun.damage);
   });
 });
 

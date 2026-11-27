@@ -202,7 +202,7 @@ export const WEAPONS: Record<WeaponId, WeaponStats> = {
   shotgun: {
     name: 'Shotgun',
     shortName: 'SHOTGUN',
-    damage: 8, // per pellet; several pellets on one zombie add up
+    damage: 12, // per pellet (raised from the brief's 8 by request); several pellets on one zombie add up
     fireRate: 1,
     magazineSize: 5,
     startingReserve: 20,
