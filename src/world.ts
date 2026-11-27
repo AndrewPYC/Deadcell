@@ -14,12 +14,13 @@ import {
   DEFAULT_CHARACTER,
   FROST_PULSE,
   HIT_FLASH_SECONDS,
-  MAP_WALLS,
+  LEVEL_1,
   PLAYER_RADIUS,
-  TEST_LEVEL,
+  STARTING_WEAPON,
   ZOMBIES,
   type CharacterId,
   type LevelDef,
+  type WeaponId,
   type ZombieType,
 } from './data/config';
 import type { Input } from './core/input';
@@ -28,7 +29,6 @@ import {
   createPlayer,
   damagePlayer,
   drawPlayer,
-  isDead,
   switchCharacter,
   updatePlayer,
   type Player,
@@ -57,7 +57,9 @@ import { drawAbilityIcon } from './ui/abilityIcon';
 import { drawWaveHud } from './ui/waveHud';
 import { drawSpawnWarnings } from './ui/spawnWarnings';
 import { drawDebugInfo } from './ui/debugInfo';
-import { drawEndScreen } from './ui/gameOver';
+import { drawEndScreen, endScreenText } from './ui/gameOver';
+import { drawObjective, objectiveHint } from './ui/objective';
+import { createLevelState, updateLevel, type LevelResult, type LevelState } from './systems/levelManager';
 
 export interface World {
   player: Player;
@@ -70,9 +72,13 @@ export interface World {
   supplyTimers: number[];
   level: LevelDef;
   waves: WaveState;
+  /** Win and lose tracking for the level. */
+  levelState: LevelState;
   zombieWorld: ZombieWorld;
   /** Random source for spawns and drops; tests pass a seeded one. */
   rng: () => number;
+  /** Seconds of play so far; drives pulsing visuals. */
+  time: number;
 }
 
 const ZOMBIE_TYPES = Object.keys(ZOMBIES) as ZombieType[];
@@ -80,24 +86,26 @@ const ZOMBIE_TYPES = Object.keys(ZOMBIES) as ZombieType[];
 export const standardAlive = (zombies: readonly Zombie[]): number =>
   zombies.filter((z) => countsTowardCap(z.type)).length;
 
-export const isLevelClear = (world: World): boolean => world.waves.phase === 'victory';
-/** Death or a cleared level stops the game until restart. */
-export const isOver = (world: World): boolean => isDead(world.player) || isLevelClear(world);
+export const isLevelClear = (world: World): boolean => world.levelState.status === 'won';
+/** A won or lost level stops the game until restart. */
+export const isOver = (world: World): boolean => world.levelState.status !== 'playing';
 
 /** DEBUG spawn: one zombie away from the player. Respects the cap like wave spawns do. */
 export function spawnZombie(world: World, type: ZombieType): void {
   if (countsTowardCap(type) && standardAlive(world.zombies) >= ACTIVE_ZOMBIE_CAP) return;
-  const pos = findSpawnPoint(world.player.pos, ZOMBIES[type].radius, MAP_WALLS, CANVAS_WIDTH, CANVAS_HEIGHT, world.rng);
+  const pos = findSpawnPoint(world.player.pos, ZOMBIES[type].radius, world.level.walls, CANVAS_WIDTH, CANVAS_HEIGHT, world.rng);
   world.zombies.push(createZombie(type, pos));
 }
 
+/** `owned` is the profile's weapon list; the player starts the level with exactly those. */
 export function createWorld(
   character: CharacterId = DEFAULT_CHARACTER,
-  level: LevelDef = TEST_LEVEL,
+  level: LevelDef = LEVEL_1,
+  owned: readonly WeaponId[] = [STARTING_WEAPON],
   rng: () => number = Math.random,
 ): World {
   return {
-    player: createPlayer(vec(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2), character),
+    player: createPlayer(vec(level.playerStart.x, level.playerStart.y), character, owned),
     zombies: [],
     projectiles: [],
     enemyProjectiles: [],
@@ -106,13 +114,15 @@ export function createWorld(
     supplyTimers: createSupplyTimers(level.supply),
     level,
     waves: createWaveState(level),
+    levelState: createLevelState(level),
     zombieWorld: {
-      walls: MAP_WALLS,
+      walls: level.walls,
       width: CANVAS_WIDTH,
       height: CANVAS_HEIGHT,
-      nav: createNavCache(MAP_WALLS, CANVAS_WIDTH, CANVAS_HEIGHT, ZOMBIE_TYPES.map((t) => ZOMBIES[t].radius)),
+      nav: createNavCache(level.walls, CANVAS_WIDTH, CANVAS_HEIGHT, ZOMBIE_TYPES.map((t) => ZOMBIES[t].radius)),
     },
     rng,
+    time: 0,
   };
 }
 
@@ -163,14 +173,14 @@ function handleWaves(world: World, dt: number): void {
     activeStandard: standardAlive(world.zombies),
     activeTotal: world.zombies.length,
     pickSpawnPoint: (type) =>
-      findSpawnPoint(player, ZOMBIES[type].radius, MAP_WALLS, CANVAS_WIDTH, CANVAS_HEIGHT, world.rng, GROUP_MIN_DISTANCE),
+      findSpawnPoint(player, ZOMBIES[type].radius, world.level.walls, CANVAS_WIDTH, CANVAS_HEIGHT, world.rng, GROUP_MIN_DISTANCE),
     inSafeArea: (pos) => inSafeArea(pos, player),
   };
   const step = updateWaves(world.waves, world.level, dt, ctx);
   world.waves = step.state;
   for (const g of step.spawns) {
     const r = ZOMBIES[g.type].radius;
-    for (const pos of groupPositions(g.pos, g.count, r, MAP_WALLS, CANVAS_WIDTH, CANVAS_HEIGHT)) {
+    for (const pos of groupPositions(g.pos, g.count, r, world.level.walls, CANVAS_WIDTH, CANVAS_HEIGHT)) {
       world.zombies.push(createZombie(g.type, pos));
     }
   }
@@ -185,19 +195,33 @@ function handleSupplies(world: World, dt: number): void {
   world.pickups = collectPickups(world.player, world.pickups);
 }
 
-export function updateWorld(world: World, input: Input, dt: number): void {
+/** Checks win and lose conditions after everything else has moved this step. */
+function handleLevel(world: World): LevelResult | null {
+  const step = updateLevel(world.levelState, world.level, {
+    waves: world.waves,
+    playerHealth: world.player.health,
+    playerPos: world.player.pos,
+    xpEarned: world.player.xp,
+  });
+  world.levelState = step.state;
+  return step.finished;
+}
+
+/** Runs one step. Returns the level's result on the step it is won or lost, otherwise null. */
+export function updateWorld(world: World, input: Input, dt: number): LevelResult | null {
   const { player } = world;
-  if (isOver(world)) return;
+  if (isOver(world)) return null;
+  world.time += dt;
   handleDebugKeys(world, input);
 
-  updatePlayer(player, input, dt);
+  updatePlayer(player, input, dt, world.level.walls);
   handleAbility(world, input, dt);
   const ability = abilityOf(player.character);
   const active = isAbilityActive(player.ability);
   const onHit: OnHit<Zombie> = (z: Zombie, dir: Vec2) => applyHitEffect(ability, active, z, dir);
   world.projectiles.push(...updatePlayerWeapon(player, input, dt, weaponModsFor(ability, active)));
 
-  const moved = updateProjectiles(world.projectiles, dt, MAP_WALLS, CANVAS_WIDTH, CANVAS_HEIGHT);
+  const moved = updateProjectiles(world.projectiles, dt, world.level.walls, CANVAS_WIDTH, CANVAS_HEIGHT);
   moved.detonations.forEach((d) => detonate(world, d, onHit));
   const hits = resolveProjectileHits(moved.alive, world.zombies, HIT_FLASH_SECONDS, onHit);
   hits.detonations.forEach((d) => detonate(world, d, onHit, d.directTarget));
@@ -213,7 +237,7 @@ export function updateWorld(world: World, input: Input, dt: number): void {
   const spit = updateProjectiles(
     [...world.enemyProjectiles, ...zombieStep.spits],
     dt,
-    MAP_WALLS,
+    world.level.walls,
     CANVAS_WIDTH,
     CANVAS_HEIGHT,
   );
@@ -223,12 +247,14 @@ export function updateWorld(world: World, input: Input, dt: number): void {
 
   world.explosions = updateExplosions(world.explosions, dt);
   handleSupplies(world, dt);
+  return handleLevel(world);
 }
 
 export function renderWorld(ctx: CanvasRenderingContext2D, world: World): void {
   ctx.fillStyle = COLOR_BACKGROUND;
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-  drawWalls(ctx, MAP_WALLS);
+  drawObjective(ctx, world.level, world.levelState, world.time);
+  drawWalls(ctx, world.level.walls);
   drawPickups(ctx, world.pickups);
   drawSpawnWarnings(ctx, world.waves.warnings);
   drawZombies(ctx, world.zombies);
@@ -240,8 +266,8 @@ export function renderWorld(ctx: CanvasRenderingContext2D, world: World): void {
   drawStaminaBar(ctx, world.player.stamina);
   drawAmmo(ctx, world.player.loadout);
   drawAbilityIcon(ctx, world.player);
-  drawWaveHud(ctx, world.waves, world.level.waves.length, world.zombies.length);
+  drawWaveHud(ctx, world.level, world.waves, world.zombies.length, objectiveHint(world.level, world.levelState));
   drawDebugInfo(ctx, world.zombies.length);
-  if (isDead(world.player)) drawEndScreen(ctx, 'YOU DIED', world.player.xp);
-  else if (isLevelClear(world)) drawEndScreen(ctx, 'LEVEL CLEAR', world.player.xp);
+  const end = endScreenText(world.levelState, world.level, world.player.xp);
+  if (end) drawEndScreen(ctx, end);
 }

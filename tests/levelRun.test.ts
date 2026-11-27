@@ -2,37 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { createWorld, isLevelClear, standardAlive, updateWorld } from '../src/world';
 import { enemiesRemaining, totalInWave } from '../src/systems/waves';
 import { waveHudLines } from '../src/ui/waveHud';
-import type { Input } from '../src/core/input';
 import type { Zombie } from '../src/entities/zombie';
-import { vec } from '../src/core/math';
 import { ACTIVE_ZOMBIE_CAP, FIXED_STEP_SECONDS, TEST_LEVEL, ZOMBIES, ZOMBIE_SPAWN_MIN_DISTANCE } from '../src/data/config';
-
-/** Small seeded PRNG (mulberry32) so the run is the same every time. */
-function seeded(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+import { idleInput, seeded } from './helpers';
 
 /** Fastest zombie's move in one step, plus a little for separation. */
 const STEP_SLACK = ZOMBIES.runner.speed * FIXED_STEP_SECONDS * 2;
 
-const idleInput: Input = {
-  isDown: () => false,
-  consumePress: () => false,
-  clearPresses: () => {},
-  mouse: vec(0, 0),
-  mouseDown: () => false,
-};
-
 describe('test level, start to finish', () => {
   it('plays every wave in order, holds the cap, and ends in victory', () => {
-    const world = createWorld('zane', TEST_LEVEL, seeded(7));
+    const world = createWorld('zane', TEST_LEVEL, undefined, seeded(7));
     const steps = Math.round(600 / FIXED_STEP_SECONDS); // generous upper bound
     const killEvery = Math.round(1 / FIXED_STEP_SECONDS); // one kill per second, so wave 3 hits the cap
 

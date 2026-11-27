@@ -4,6 +4,7 @@ import {
   type DropRule,
   type PickupKind,
   type SupplyConfig,
+  type SupplyPointDef,
   type WeightedPickup,
   type ZombieType,
 } from '../data/config';
@@ -37,11 +38,15 @@ export function rollDrop(
   return kind ? createDroppedPickup(kind, pos, rule.lifetimeSeconds) : null;
 }
 
+/** A spot with a fixed kind always holds that kind; otherwise one is rolled from the table. */
+const kindFor = (point: SupplyPointDef, config: SupplyConfig, rng: () => number): PickupKind | null =>
+  point.kind ?? rollKind(config.table, rng);
+
 /** Every supply location starts stocked. */
 export function stockSupplyPoints(config: SupplyConfig, rng: () => number): Pickup[] {
   const out: Pickup[] = [];
   config.points.forEach((p, i) => {
-    const kind = rollKind(config.table, rng);
+    const kind = kindFor(p, config, rng);
     if (kind) out.push(createSupplyPickup(kind, vec(p.x, p.y), i));
   });
   return out;
@@ -70,8 +75,8 @@ export function updateSupplyPoints(
     if (pickups.some((p) => p.supplyPoint === i)) return config.respawnSeconds;
     const left = t - dt;
     if (left > TIMER_EPSILON) return left;
-    const kind = rollKind(config.table, rng);
     const at = config.points[i];
+    const kind = kindFor(at, config, rng);
     if (kind) spawned.push(createSupplyPickup(kind, vec(at.x, at.y), i));
     return config.respawnSeconds;
   });

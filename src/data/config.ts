@@ -118,7 +118,7 @@ export const STAMINA_RESUME_THRESHOLD = 20;
 /** Resolution passes per step, so corners where two walls meet settle cleanly. */
 export const COLLISION_ITERATIONS = 3;
 
-// Test map walls (placeholder layout, not from spec). One neutral color so zombies stand out.
+// Map walls. Each level lists its own; see TEST_LEVEL and LEVEL_1 below.
 export const COLOR_WALL = '#3a3d42';
 export interface WallDef {
   x: number;
@@ -127,7 +127,8 @@ export interface WallDef {
   h: number;
   color: string;
 }
-export const MAP_WALLS: readonly WallDef[] = [
+/** Test map walls (placeholder layout, not from spec). One neutral color so zombies stand out. */
+export const TEST_MAP_WALLS: readonly WallDef[] = [
   { x: 180, y: 120, w: 260, h: 40, color: COLOR_WALL },
   { x: 180, y: 160, w: 40, h: 180, color: COLOR_WALL },
   { x: 860, y: 140, w: 60, h: 260, color: COLOR_WALL },
@@ -245,11 +246,6 @@ export const STARTING_WEAPON: WeaponId = 'assaultRifle';
 /** Number-key slots: Digit1 → index 0, and so on. */
 export const WEAPON_SLOTS: readonly WeaponId[] = ['assaultRifle', 'shotgun', 'rpg'];
 export const WEAPON_SWITCH_SECONDS = 0.25;
-/**
- * DEBUG: start with every weapon owned. Real unlock rules arrive with the level system;
- * set to false then so the player starts with only STARTING_WEAPON.
- */
-export const DEBUG_ALL_WEAPONS_OWNED = true;
 
 // Explosion visual (presentation)
 export const EXPLOSION_VISUAL_SECONDS = 0.3;
@@ -416,6 +412,8 @@ export interface SpawnGroupDef {
 }
 export interface WaveDef {
   groups: SpawnGroupDef[];
+  /** Mandatory waves must be cleared to win. Leave out for true. */
+  mandatory?: boolean;
 }
 
 // Spec §4.4, §6.6 Supplies: pickups at supply locations and as zombie drops, set per level.
@@ -424,9 +422,15 @@ export interface WeightedPickup {
   kind: PickupKind;
   weight: number; // relative odds within its table
 }
+export interface SupplyPointDef {
+  x: number;
+  y: number;
+  /** Fixed kind for this spot (an ammo spot, a medkit spot). Left out: rolled from the table. */
+  kind?: PickupKind;
+}
 export interface SupplyConfig {
   /** Predefined supply locations; each holds one pickup and refills after it is taken. */
-  points: readonly { x: number; y: number }[];
+  points: readonly SupplyPointDef[];
   table: WeightedPickup[];
   respawnSeconds: number;
 }
@@ -439,18 +443,67 @@ export interface DropRule {
   /** No new drops while this many dropped pickups are already lying around. */
   maxOnGround: number;
 }
+// Spec §3, §3.1, §9 Levels: data-driven definitions (structure from task brief; verify against SPEC.pdf)
+export interface ZoneDef {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+/**
+ * What the player must finish after the mandatory waves.
+ * - clearWaves: nothing more; clearing the waves wins.
+ * - extraction: a zone opens after the mandatory waves; walking into it wins.
+ * - protect: a target with health that must survive; losing it loses the level.
+ */
+export type ObjectiveDef =
+  | { kind: 'clearWaves' }
+  | { kind: 'extraction'; zone: ZoneDef }
+  | { kind: 'protect'; target: ZoneDef; health: number };
+/** Spec §12.1 rewards, granted once on victory. */
+export interface LevelRewards {
+  bonusXp: number;
+  /** Weapons added to the profile's ownership list. */
+  weapons: WeaponId[];
+  /** Level numbers unlocked for play. */
+  levels: number[];
+}
+/** A run of consecutive waves at one difficulty. A level has 1 to 3, covering every wave in order. */
+export interface DifficultySegment {
+  label: string;
+  difficulty: 1 | 2 | 3;
+  waveCount: number;
+}
+export const MIN_DIFFICULTY_SEGMENTS = 1;
+export const MAX_DIFFICULTY_SEGMENTS = 3;
 export interface LevelDef {
+  /** Level number, as used by unlocks. */
+  id: number;
   name: string;
+  walls: readonly WallDef[];
+  playerStart: { x: number; y: number };
   waves: WaveDef[];
   /** Countdown before the first wave and between waves. */
   intermissionSeconds: number;
   supply: SupplyConfig;
   drops: DropRule;
+  objective: ObjectiveDef;
+  rewards: LevelRewards;
+  segments: DifficultySegment[];
 }
+
+// Spec §12.1 Profile defaults (persistence arrives with save/load)
+export const FIRST_LEVEL_ID = 1;
 
 /** Test level: three waves using all four zombie types. Wave 3 sends 60 to exercise the cap. */
 export const TEST_LEVEL: LevelDef = {
+  id: 0,
   name: 'Test Waves',
+  walls: TEST_MAP_WALLS,
+  playerStart: { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 },
+  objective: { kind: 'clearWaves' },
+  rewards: { bonusXp: 0, weapons: [], levels: [] },
+  segments: [{ label: 'Test', difficulty: 1, waveCount: 3 }],
   intermissionSeconds: 5,
   waves: [
     {
@@ -499,6 +552,103 @@ export const TEST_LEVEL: LevelDef = {
     maxOnGround: 8,
   },
 };
+
+// Spec §8 Level 1, The Outbreak (waves and rewards from task brief; verify against SPEC.pdf).
+// An abandoned city block: buildings along the top and bottom, a wide street and plaza in
+// the middle, and 60–80 px alleys between buildings. Wave timings and map layout are
+// PLACEHOLDERS tuned for the 5–7 minute target; they need a playtest.
+export const COLOR_BUILDING_CONCRETE = '#4a4d52';
+export const COLOR_BUILDING_BRICK = '#5e4a44';
+export const COLOR_CAR_BLUE = '#3d5a73';
+export const COLOR_CAR_RED = '#7a3b3b';
+export const COLOR_BARRICADE = '#8a7a4a';
+export const LEVEL_1: LevelDef = {
+  id: 1,
+  name: 'The Outbreak',
+  walls: [
+    // Top row. A–B alley is 70 px; B–C is a wide street.
+    { x: 80, y: 60, w: 260, h: 170, color: COLOR_BUILDING_BRICK },
+    { x: 410, y: 60, w: 210, h: 170, color: COLOR_BUILDING_CONCRETE },
+    { x: 780, y: 60, w: 230, h: 170, color: COLOR_BUILDING_BRICK },
+    // Plaza: wrecked cars and a barricade for cover.
+    { x: 250, y: 380, w: 130, h: 22, color: COLOR_BARRICADE },
+    { x: 500, y: 320, w: 96, h: 44, color: COLOR_CAR_BLUE },
+    { x: 760, y: 380, w: 44, h: 96, color: COLOR_CAR_RED },
+    { x: 1060, y: 300, w: 96, h: 44, color: COLOR_CAR_BLUE },
+    // Bottom row. F–G alley is 70 px, G–H is 80 px; G reaches the map edge.
+    { x: 180, y: 530, w: 290, h: 130, color: COLOR_BUILDING_CONCRETE },
+    { x: 540, y: 520, w: 260, h: 200, color: COLOR_BUILDING_BRICK },
+    { x: 880, y: 520, w: 300, h: 120, color: COLOR_BUILDING_CONCRETE },
+  ],
+  playerStart: { x: 90, y: 610 },
+  objective: { kind: 'extraction', zone: { x: 1090, y: 30, w: 160, h: 120 } },
+  rewards: { bonusXp: 250, weapons: ['shotgun'], levels: [2] },
+  segments: [
+    { label: 'Quiet Streets', difficulty: 1, waveCount: 2 },
+    { label: 'Runners in the Alleys', difficulty: 2, waveCount: 2 },
+    { label: 'The Block Falls', difficulty: 3, waveCount: 1 },
+  ],
+  // Small batches spread over 30–48 s per wave plus 15 s breaks: with instant kills the
+  // waves take ~4.6 min, ~5 with the walk to extraction; real play should land at 5–6.
+  intermissionSeconds: 15,
+  waves: [
+    { groups: [{ type: 'walker', count: 6, groupSize: 1, delaySeconds: 0, intervalSeconds: 6 }] },
+    { groups: [{ type: 'walker', count: 9, groupSize: 1, delaySeconds: 0, intervalSeconds: 4 }] },
+    {
+      groups: [
+        { type: 'walker', count: 8, groupSize: 2, delaySeconds: 0, intervalSeconds: 10 },
+        { type: 'runner', count: 3, groupSize: 1, delaySeconds: 15, intervalSeconds: 10 },
+      ],
+    },
+    {
+      groups: [
+        { type: 'walker', count: 12, groupSize: 2, delaySeconds: 0, intervalSeconds: 9 },
+        { type: 'runner', count: 5, groupSize: 1, delaySeconds: 12, intervalSeconds: 9 },
+      ],
+    },
+    {
+      groups: [
+        { type: 'walker', count: 15, groupSize: 3, delaySeconds: 0, intervalSeconds: 12 },
+        { type: 'runner', count: 8, groupSize: 2, delaySeconds: 8, intervalSeconds: 13 },
+      ],
+    },
+  ],
+  supply: {
+    points: [
+      { x: 375, y: 145, kind: 'ammo' }, // inside the A–B alley
+      { x: 700, y: 140, kind: 'ammo' }, // open street
+      { x: 640, y: 280, kind: 'ammo' }, // plaza centre
+      { x: 505, y: 600, kind: 'ammo' }, // inside the F–G alley
+      { x: 60, y: 300, kind: 'medkit' }, // west edge of the plaza
+      { x: 1230, y: 580, kind: 'medkit' }, // east side, past building H
+    ],
+    table: [
+      { kind: 'ammo', weight: 2 },
+      { kind: 'medkit', weight: 1 },
+    ],
+    respawnSeconds: 25,
+  },
+  drops: {
+    chance: { walker: 0.08, runner: 0.1, tank: 0.5, spitter: 0.15 },
+    table: [
+      { kind: 'ammo', weight: 3 },
+      { kind: 'medkit', weight: 1 },
+    ],
+    lifetimeSeconds: 20,
+    maxOnGround: 6,
+  },
+};
+/** Every playable level, by id. Level 2 is unlocked by Level 1 but not built yet. */
+export const LEVELS: readonly LevelDef[] = [LEVEL_1];
+
+// Extraction zone and level end screen (presentation)
+export const COLOR_EXTRACTION = '79, 195, 122'; // rgb triplet; alpha pulses
+export const EXTRACTION_PULSE_HZ = 1.5;
+export const EXTRACTION_FILL_MIN_ALPHA = 0.15;
+export const EXTRACTION_FILL_MAX_ALPHA = 0.35;
+export const EXTRACTION_BORDER_WIDTH = 3;
+export const EXTRACTION_LABEL = 'EXTRACTION';
+export const COLOR_SEGMENT_TEXT = '#c9cbcf';
 
 // Wave HUD and spawn warnings (presentation)
 export const COLOR_SPAWN_WARNING = '224, 72, 72'; // rgb triplet; alpha pulses

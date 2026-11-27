@@ -7,15 +7,13 @@ import {
   CANVAS_WIDTH,
   CHARACTERS,
   DEFAULT_CHARACTER,
-  MAP_WALLS,
   PLAYER_RADIUS,
   COLOR_HIT_FLASH,
-  DEBUG_ALL_WEAPONS_OWNED,
   HIT_FLASH_SECONDS,
   PLAYER_MAX_HEALTH,
   STARTING_WEAPON,
-  WEAPON_SLOTS,
   type CharacterId,
+  type WallDef,
   type WeaponId,
 } from '../data/config';
 import { createAbility, type AbilityState } from '../systems/ability';
@@ -49,15 +47,21 @@ export function damagePlayer(p: Player, amount: number): void {
   p.flashLeft = HIT_FLASH_SECONDS;
 }
 
-const startingWeapons = (): WeaponId[] => (DEBUG_ALL_WEAPONS_OWNED ? [...WEAPON_SLOTS] : [STARTING_WEAPON]);
+/** The starting weapon is always owned; anything else comes from the profile's unlocks. */
+const startingWeapons = (owned: readonly WeaponId[]): WeaponId[] =>
+  owned.includes(STARTING_WEAPON) ? [...owned] : [STARTING_WEAPON, ...owned];
 
-export const createPlayer = (pos: Vec2, character: CharacterId = DEFAULT_CHARACTER): Player => ({
+export const createPlayer = (
+  pos: Vec2,
+  character: CharacterId = DEFAULT_CHARACTER,
+  owned: readonly WeaponId[] = [STARTING_WEAPON],
+): Player => ({
   pos,
   aim: 0,
   stamina: createStamina(),
   sprinting: false,
   moving: false,
-  loadout: createLoadout(startingWeapons(), STARTING_WEAPON),
+  loadout: createLoadout(startingWeapons(owned), STARTING_WEAPON),
   health: PLAYER_MAX_HEALTH,
   maxHealth: PLAYER_MAX_HEALTH,
   xp: 0,
@@ -80,7 +84,7 @@ const readMoveKeys = (input: Input): MoveKeys => ({
   right: input.isDown('KeyD'),
 });
 
-export function updatePlayer(p: Player, input: Input, dt: number): void {
+export function updatePlayer(p: Player, input: Input, dt: number, walls: readonly WallDef[]): void {
   const keys = readMoveKeys(input);
   const dir = moveDirection(keys);
   p.moving = dir.x !== 0 || dir.y !== 0;
@@ -88,7 +92,7 @@ export function updatePlayer(p: Player, input: Input, dt: number): void {
   p.stamina = updateStamina(p.stamina, p.sprinting, dt);
 
   const v = moveVelocity(keys, p.sprinting);
-  p.pos = moveCircle(p.pos, vec(v.x * dt, v.y * dt), PLAYER_RADIUS, MAP_WALLS, CANVAS_WIDTH, CANVAS_HEIGHT);
+  p.pos = moveCircle(p.pos, vec(v.x * dt, v.y * dt), PLAYER_RADIUS, walls, CANVAS_WIDTH, CANVAS_HEIGHT);
   p.aim = angleTo(p.pos, input.mouse);
   p.flashLeft = Math.max(0, p.flashLeft - dt);
 }

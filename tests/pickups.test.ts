@@ -159,6 +159,16 @@ describe('supply locations', () => {
     expect(pickups.filter((p) => p.supplyPoint === 1)).toHaveLength(1); // never doubled up
   });
 
+  it('a spot with a fixed kind always stocks and refills that kind, whatever the table rolls', () => {
+    const fixed: SupplyConfig = { ...config, points: [{ x: 10, y: 10, kind: 'medkit' }, { x: 50, y: 50 }] };
+    expect(stockSupplyPoints(fixed, always).map((p) => p.kind)).toEqual(['medkit', 'ammo']);
+    const refill = updateSupplyPoints([0, 0], [], fixed, FIXED_STEP_SECONDS, always);
+    expect(refill.spawned.map((p) => [p.supplyPoint, p.kind])).toEqual([
+      [0, 'medkit'],
+      [1, 'ammo'],
+    ]);
+  });
+
   it('the test level has supply locations and drop rules for every zombie type', () => {
     expect(TEST_LEVEL.supply.points.length).toBeGreaterThan(0);
     expect(TEST_LEVEL.supply.table.map((e) => e.kind).sort()).toEqual(['ammo', 'medkit']);
