@@ -1,25 +1,118 @@
-import { normalize, vec, type Vec2 } from '../core/math';
-import { CANVAS_HEIGHT, CANVAS_WIDTH, MAP_WALLS, PLAYER_RADIUS, ZOMBIES } from '../data/config';
+import { length, normalize, vec, type Vec2 } from '../core/math';
+import { SEPARATION_PADDING, SEPARATION_WEIGHT, ZOMBIES, type ZombieStats } from '../data/config';
 import type { Zombie } from '../entities/zombie';
-import { moveCircle } from './collision';
+import { makeProjectile, type Projectile } from '../entities/projectile';
+import { hasClearPath, moveCircle, type Rect } from './collision';
 import { inMeleeRange, meleeStep } from './melee';
+import { fieldFor, type NavCache } from './navCache';
+import { flowDirection } from './navigation';
+import { canSpit, rangeIntent } from './spitter';
 
-/**
- * Simple steering: walk straight at the player, sliding along walls.
- * Returns the total melee damage dealt to the player this step.
- */
-export function updateZombies(zombies: Zombie[], player: Vec2, dt: number): number {
-  let damage = 0;
+export interface ZombieWorld {
+  walls: readonly Rect[];
+  width: number;
+  height: number;
+  nav: NavCache;
+}
+
+export interface ZombieStep {
+  meleeDamage: number;
+  spits: Projectile[];
+}
+
+/** Gentle push away from nearby zombies so they spread out instead of stacking. */
+export function separation(self: Zombie, others: readonly Zombie[]): Vec2 {
+  let x = 0;
+  let y = 0;
+  for (const o of others) {
+    if (o === self) continue;
+    const dx = self.pos.x - o.pos.x;
+    const dy = self.pos.y - o.pos.y;
+    const range = self.radius + o.radius + SEPARATION_PADDING;
+    const distSq = dx * dx + dy * dy;
+    if (distSq >= range * range) continue;
+    const dist = Math.sqrt(distSq);
+    const strength = 1 - dist / range;
+    if (dist === 0) {
+      x += strength; // exact overlap: any consistent direction works
+      continue;
+    }
+    x += (dx / dist) * strength;
+    y += (dy / dist) * strength;
+  }
+  return vec(x, y);
+}
+
+/** Zombies crowd the player but never overlap them; the push is wall-checked like normal movement. */
+function keepOutOfPlayer(z: Zombie, player: Vec2, playerRadius: number, world: ZombieWorld): Vec2 {
+  const dx = z.pos.x - player.x;
+  const dy = z.pos.y - player.y;
+  const dist = Math.hypot(dx, dy);
+  const minDist = z.radius + playerRadius;
+  if (dist >= minDist) return z.pos;
+  const nx = dist === 0 ? 1 : dx / dist;
+  const ny = dist === 0 ? 0 : dy / dist;
+  const push = minDist - dist;
+  return moveCircle(z.pos, vec(nx * push, ny * push), z.radius, world.walls, world.width, world.height);
+}
+
+/** Straight at the player when the way is clear, otherwise along the flow field around walls. */
+function chaseDirection(z: Zombie, player: Vec2, clear: boolean, world: ZombieWorld): Vec2 {
+  if (clear) return normalize(vec(player.x - z.pos.x, player.y - z.pos.y));
+  const field = fieldFor(world.nav, z.radius);
+  return field ? flowDirection(field, z.pos) : normalize(vec(player.x - z.pos.x, player.y - z.pos.y));
+}
+
+function desiredDirection(z: Zombie, s: ZombieStats, player: Vec2, playerRadius: number, dist: number, clear: boolean, world: ZombieWorld): Vec2 {
+  if (s.behavior === 'melee') {
+    return inMeleeRange(dist, z.radius, playerRadius) ? vec(0, 0) : chaseDirection(z, player, clear, world);
+  }
+  const intent = rangeIntent(dist, s.preferredRange!, clear);
+  if (intent === 'approach') return chaseDirection(z, player, clear, world);
+  if (intent === 'retreat') return normalize(vec(z.pos.x - player.x, z.pos.y - player.y));
+  return vec(0, 0);
+}
+
+export function updateZombies(
+  zombies: Zombie[],
+  player: Vec2,
+  playerRadius: number,
+  world: ZombieWorld,
+  dt: number,
+): ZombieStep {
+  let meleeDamage = 0;
+  const spits: Projectile[] = [];
+
   for (const z of zombies) {
     const s = ZOMBIES[z.type];
-    const dir = normalize(vec(player.x - z.pos.x, player.y - z.pos.y));
-    z.pos = moveCircle(z.pos, vec(dir.x * s.speed * dt, dir.y * s.speed * dt), z.radius, MAP_WALLS, CANVAS_WIDTH, CANVAS_HEIGHT);
-
     const dist = Math.hypot(player.x - z.pos.x, player.y - z.pos.y);
-    const step = meleeStep(z.attackCooldown, inMeleeRange(dist, z.radius, PLAYER_RADIUS), s.attackInterval, dt);
-    z.attackCooldown = step.cooldown;
-    if (step.hit) damage += s.damage;
+    const clear = hasClearPath(z.pos, player, z.radius, world.walls);
+
+    const want = desiredDirection(z, s, player, playerRadius, dist, clear, world);
+    const push = separation(z, zombies);
+    let v = vec((want.x + push.x * SEPARATION_WEIGHT) * s.speed, (want.y + push.y * SEPARATION_WEIGHT) * s.speed);
+    const speed = length(v);
+    if (speed > s.speed) v = vec((v.x / speed) * s.speed, (v.y / speed) * s.speed);
+    z.pos = moveCircle(z.pos, vec(v.x * dt, v.y * dt), z.radius, world.walls, world.width, world.height);
+    z.pos = keepOutOfPlayer(z, player, playerRadius, world);
+
+    const newDist = Math.hypot(player.x - z.pos.x, player.y - z.pos.y);
+    if (s.behavior === 'melee') {
+      const step = meleeStep(z.attackCooldown, inMeleeRange(newDist, z.radius, playerRadius), s.attackInterval, dt);
+      z.attackCooldown = step.cooldown;
+      if (step.hit) meleeDamage += s.damage;
+    } else if (s.spit && s.preferredRange) {
+      z.attackCooldown = Math.max(0, z.attackCooldown - dt);
+      const spitClear = hasClearPath(z.pos, player, s.spit.radius, world.walls);
+      if (canSpit(z.attackCooldown, newDist, s.preferredRange.max, spitClear)) {
+        const angle = Math.atan2(player.y - z.pos.y, player.x - z.pos.x);
+        spits.push(
+          makeProjectile(z.pos, angle, { ...s.spit, damage: s.damage, splash: null }),
+        );
+        z.attackCooldown = s.attackInterval;
+      }
+    }
     z.flashLeft = Math.max(0, z.flashLeft - dt);
   }
-  return damage;
+  return { meleeDamage, spits };
 }

@@ -27,7 +27,8 @@ src/
   ui/        HUD, menus, overlays
   data/      config.ts (all balance numbers), map data
   save/      save/load
-  main.ts    boots the canvas and loop
+  world.ts   all game state; update and render order for one step
+  main.ts    boots the canvas and loop, restarts the world
 tests/       Vitest unit tests (*.test.ts)
 docs/        SPEC.pdf
 ```

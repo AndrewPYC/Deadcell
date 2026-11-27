@@ -20,6 +20,7 @@ export const COLOR_BACKGROUND = '#6b6e73';
 export const COLOR_HUD_TEXT = '#f2f3f5';
 export const HUD_FONT = '14px Consolas, ui-monospace, monospace';
 export const HUD_PADDING = 12;
+export const HUD_ROW_HEIGHT = 22; // top-left debug rows
 
 // Spec §4.1 Player body (values from task brief; verify against SPEC.pdf)
 export const PLAYER_DIAMETER = 32;
@@ -211,17 +212,32 @@ export const COLOR_HIT_FLASH = '#ffffff';
 export const PLAYER_MAX_HEALTH = 100; // PLACEHOLDER
 export const RESTART_KEY = 'Enter';
 
-// Spec §7 Zombies (Walker values are PLACEHOLDERS: the basic-zombie brief was never given)
-export type ZombieType = 'walker';
+// Spec §7.1–7.7 Zombies (Runner/Tank/Spitter from task brief; verify against SPEC.pdf.
+// Walker values are PLACEHOLDERS: the basic-zombie brief was never given.)
+export type ZombieType = 'walker' | 'runner' | 'tank' | 'spitter';
+export interface SpitStats {
+  speed: number; // px/s
+  lifetime: number; // seconds
+  radius: number; // px
+  color: string;
+}
 export interface ZombieStats {
   name: string;
   health: number;
   speed: number; // px/s
-  damage: number; // per attack
+  damage: number; // per melee hit, or per spit for ranged zombies
   xp: number; // awarded on kill
   attackInterval: number; // seconds between attacks
   radius: number; // px; each type has its own size
   color: string; // each type has its own color
+  behavior: 'melee' | 'ranged';
+  /** Ranged zombies try to stay inside this distance band from the player. */
+  preferredRange: { min: number; max: number } | null;
+  spit: SpitStats | null;
+  // Ability hooks (used by character abilities later)
+  knockbackResistance: number; // 0 = full knockback, 1 = immune
+  freezeImmune: boolean; // true = can't be fully frozen; ice only slows
+  iceSlowMultiplier: number; // speed is multiplied by this while slowed by ice
 }
 export const ZOMBIES: Record<ZombieType, ZombieStats> = {
   walker: {
@@ -232,9 +248,77 @@ export const ZOMBIES: Record<ZombieType, ZombieStats> = {
     xp: 10, // PLACEHOLDER
     attackInterval: 1, // PLACEHOLDER
     radius: 17,
-    color: '#7f9a5a',
+    color: '#7f9a5a', // olive
+    behavior: 'melee',
+    preferredRange: null,
+    spit: null,
+    knockbackResistance: 0,
+    freezeImmune: false,
+    iceSlowMultiplier: 0.5, // PLACEHOLDER
+  },
+  runner: {
+    name: 'Runner',
+    health: 25,
+    speed: 145,
+    damage: 8,
+    xp: 15,
+    attackInterval: 1.2,
+    radius: 12, // small and quick
+    color: '#ff5f8f', // pink
+    behavior: 'melee',
+    preferredRange: null,
+    spit: null,
+    knockbackResistance: 0,
+    freezeImmune: false,
+    iceSlowMultiplier: 0.5, // PLACEHOLDER
+  },
+  tank: {
+    name: 'Tank',
+    health: 300,
+    speed: 45,
+    damage: 20,
+    xp: 50,
+    attackInterval: 2,
+    radius: 28, // big
+    color: '#5b3b8c', // deep violet
+    behavior: 'melee',
+    preferredRange: null,
+    spit: null,
+    knockbackResistance: 0.75, // PLACEHOLDER: brief says "resists", not how much
+    freezeImmune: true,
+    iceSlowMultiplier: 0.75, // ice slows tanks by only 25%
+  },
+  spitter: {
+    name: 'Spitter',
+    health: 60,
+    speed: 65,
+    damage: 12,
+    xp: 25,
+    attackInterval: 2.5,
+    radius: 15,
+    color: '#c6ef3a', // acid lime
+    behavior: 'ranged',
+    preferredRange: { min: 180, max: 260 },
+    spit: {
+      speed: 240, // PLACEHOLDER: slow enough to dodge
+      lifetime: 2.5, // PLACEHOLDER
+      radius: 7, // PLACEHOLDER
+      color: '#7dff6a',
+    },
+    knockbackResistance: 0,
+    freezeImmune: false,
+    iceSlowMultiplier: 0.5, // PLACEHOLDER
   },
 };
+
+// Navigation (engine tuning, not balance)
+export const NAV_CELL_SIZE = 20; // px per flow-field cell
+/** Flow fields are rebuilt at most this often, and only when the player changes cell. */
+export const NAV_RECOMPUTE_SECONDS = 0.25;
+/** Zombies push apart when their edges are closer than this many px. */
+export const SEPARATION_PADDING = 6;
+/** Strength of the push-apart relative to the zombie's own speed. */
+export const SEPARATION_WEIGHT = 0.9;
 /** Melee reach beyond touching: attack when edges are within this many px. */
 export const MELEE_REACH = 4;
 
@@ -245,7 +329,14 @@ export const INITIAL_ZOMBIES: readonly ZombieType[] = ['walker', 'walker', 'walk
 /** DEBUG: press these keys to spawn one zombie of that type. */
 export const DEBUG_SPAWN_KEYS: Record<ZombieType, string> = {
   walker: 'Digit6',
+  runner: 'Digit7',
+  tank: 'Digit8',
+  spitter: 'Digit9',
 };
+/** DEBUG: spawns a mixed horde for the 60 FPS stress test. */
+export const DEBUG_HORDE_KEY = 'Digit0';
+export const DEBUG_HORDE_SIZE = 40;
+export const DEBUG_HELP_TEXT = '6 Walker  7 Runner  8 Tank  9 Spitter  0 Horde of 40';
 
 // Zombie health bars (presentation)
 export const ZOMBIE_HEALTH_BAR_HEIGHT = 4;

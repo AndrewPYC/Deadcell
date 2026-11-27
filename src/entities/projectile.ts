@@ -18,17 +18,36 @@ export interface Detonation {
   splash: Splash;
 }
 
-export function createProjectile(origin: Vec2, angle: number, stats: WeaponStats): Projectile {
+export interface ProjectileSpec {
+  speed: number;
+  lifetime: number;
+  radius: number;
+  damage: number;
+  color: string;
+  splash: Splash | null;
+}
+
+export function makeProjectile(origin: Vec2, angle: number, s: ProjectileSpec): Projectile {
   return {
     pos: vec(origin.x, origin.y),
-    vel: vec(Math.cos(angle) * stats.projectileSpeed, Math.sin(angle) * stats.projectileSpeed),
-    radius: stats.projectileRadius,
-    damage: stats.damage,
-    life: stats.projectileLifetime,
-    color: stats.projectileColor,
-    splash: stats.splash,
+    vel: vec(Math.cos(angle) * s.speed, Math.sin(angle) * s.speed),
+    radius: s.radius,
+    damage: s.damage,
+    life: s.lifetime,
+    color: s.color,
+    splash: s.splash,
   };
 }
+
+export const createProjectile = (origin: Vec2, angle: number, stats: WeaponStats): Projectile =>
+  makeProjectile(origin, angle, {
+    speed: stats.projectileSpeed,
+    lifetime: stats.projectileLifetime,
+    radius: stats.projectileRadius,
+    damage: stats.damage,
+    color: stats.projectileColor,
+    splash: stats.splash,
+  });
 
 const outsideMap = (p: Projectile, width: number, height: number): boolean =>
   p.pos.x < -p.radius || p.pos.y < -p.radius || p.pos.x > width + p.radius || p.pos.y > height + p.radius;

@@ -14,6 +14,39 @@ export function circleIntersectsRect(pos: Vec2, radius: number, r: Rect): boolea
   return dx * dx + dy * dy < radius * radius;
 }
 
+/** Segment a→b vs axis-aligned rectangle (slab method). */
+export function segmentIntersectsRect(a: Vec2, b: Vec2, r: Rect): boolean {
+  let tMin = 0;
+  let tMax = 1;
+  const d = [b.x - a.x, b.y - a.y];
+  const o = [a.x, a.y];
+  const lo = [r.x, r.y];
+  const hi = [r.x + r.w, r.y + r.h];
+  for (let i = 0; i < 2; i++) {
+    if (d[i] === 0) {
+      if (o[i] < lo[i] || o[i] > hi[i]) return false;
+      continue;
+    }
+    let t1 = (lo[i] - o[i]) / d[i];
+    let t2 = (hi[i] - o[i]) / d[i];
+    if (t1 > t2) [t1, t2] = [t2, t1];
+    tMin = Math.max(tMin, t1);
+    tMax = Math.min(tMax, t2);
+    if (tMin > tMax) return false;
+  }
+  return true;
+}
+
+/**
+ * True when a circle of `radius` could slide straight from a to b without touching a wall.
+ * Walls are grown by the radius, which is slightly conservative at corners.
+ */
+export function hasClearPath(a: Vec2, b: Vec2, radius: number, walls: readonly Rect[]): boolean {
+  return !walls.some((w) =>
+    segmentIntersectsRect(a, b, { x: w.x - radius, y: w.y - radius, w: w.w + radius * 2, h: w.h + radius * 2 }),
+  );
+}
+
 export function circlesOverlap(a: Vec2, ra: number, b: Vec2, rb: number): boolean {
   const dx = a.x - b.x;
   const dy = a.y - b.y;

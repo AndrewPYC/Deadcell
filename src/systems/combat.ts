@@ -21,6 +21,22 @@ export interface HitResult {
   detonations: DirectHitDetonation[];
 }
 
+export interface PlayerHitResult {
+  projectiles: Projectile[];
+  damage: number;
+}
+
+/** Enemy projectiles that touch the player are consumed and their damage totalled. */
+export function resolveHitsOnPlayer(projectiles: readonly Projectile[], pos: Vec2, radius: number): PlayerHitResult {
+  const survivors: Projectile[] = [];
+  let damage = 0;
+  for (const p of projectiles) {
+    if (circlesOverlap(p.pos, p.radius, pos, radius)) damage += p.damage;
+    else survivors.push(p);
+  }
+  return { projectiles: survivors, damage };
+}
+
 /**
  * Each projectile damages the first living thing it overlaps and is consumed, so a zombie
  * hit by several shotgun pellets takes the sum. Explosive projectiles also report a
